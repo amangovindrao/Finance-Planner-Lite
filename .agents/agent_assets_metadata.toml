@@ -11,3 +11,9 @@ id = "2NEeoqj6nyAtoCzNoLUz4"
 uri = "file://README.md"
 type = "text"
 title = "README.md — Finance Tracker"
+
+[[outputs]]
+id = "26_QmMJOm1I03brGjwyMC"
+uri = "file://BUILD_APK.md"
+type = "text"
+title = "BUILD_APK.md — Build & Publish Guide"
