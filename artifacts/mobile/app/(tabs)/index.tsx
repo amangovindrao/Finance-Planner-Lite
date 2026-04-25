@@ -370,9 +370,16 @@ export default function HomeScreen() {
           </>
         )}
 
-        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-          {searchQuery ? "Results" : "Recent"}
-        </Text>
+        <View style={styles.sectionTitleRow}>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+            {searchQuery ? "Results" : "Recent"}
+          </Text>
+          {!searchQuery && (
+            <TouchableOpacity onPress={() => router.push("/transactions")}>
+              <Text style={[styles.viewAllText, { color: colors.primary }]}>View All</Text>
+            </TouchableOpacity>
+          )}
+        </View>
         {filtered.length === 0 ? (
           <View style={[styles.emptyState, { backgroundColor: colors.card }]}>
             <Ionicons name="receipt-outline" size={32} color={colors.mutedForeground} />
@@ -582,7 +589,9 @@ const styles = StyleSheet.create({
   },
   insightText: { fontSize: 13, fontFamily: "Inter_400Regular", flexShrink: 1 },
   sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 4 },
+  sectionTitleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 4 },
   sectionTitle: { fontSize: 17, fontFamily: "Inter_700Bold", marginTop: 4 },
+  viewAllText: { fontSize: 13, fontFamily: "Inter_500Medium" },
   addLoanBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 },
   addLoanText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
   emptyLoans: { borderRadius: 14, padding: 20, alignItems: "center", gap: 6, flexDirection: "row", justifyContent: "center" },
