@@ -2,12 +2,13 @@ import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
-  FlatList,
+  DimensionValue,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -41,6 +42,7 @@ export default function HomeScreen() {
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [editExpense, setEditExpense] = useState<Expense | undefined>();
   const [searchQuery, setSearchQuery] = useState("");
+  const [showSearch, setShowSearch] = useState(false);
 
   const monthExpenses = getMonthExpenses();
   const totalSpent = getTotalSpent();
@@ -77,11 +79,33 @@ export default function HomeScreen() {
               <Text style={[styles.streakText, { color: colors.primary }]}>{streak}</Text>
             </View>
           )}
+          <TouchableOpacity onPress={() => setShowSearch(!showSearch)}>
+            <Ionicons name="search-outline" size={22} color={colors.mutedForeground} />
+          </TouchableOpacity>
           <TouchableOpacity onPress={() => router.push("/settings")}>
             <Ionicons name="settings-outline" size={22} color={colors.mutedForeground} />
           </TouchableOpacity>
         </View>
       </View>
+
+      {showSearch && (
+        <View style={[styles.searchBar, { backgroundColor: colors.input }]}>
+          <Ionicons name="search-outline" size={16} color={colors.mutedForeground} />
+          <TextInput
+            style={[styles.searchInput, { color: colors.foreground }]}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Search expenses..."
+            placeholderTextColor={colors.mutedForeground}
+            autoFocus
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery("")}>
+              <Ionicons name="close-circle" size={16} color={colors.mutedForeground} />
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -153,7 +177,7 @@ export default function HomeScreen() {
                       style={[
                         styles.progressFill,
                         {
-                          width: `${catPct}%` as any,
+                          width: `${catPct}%` as DimensionValue,
                           backgroundColor: isOver ? colors.destructive : CATEGORY_COLORS[cat],
                         },
                       ]}
@@ -194,7 +218,7 @@ export default function HomeScreen() {
                       <View
                         style={[
                           styles.goalFill,
-                          { width: `${Math.min(gPct, 100)}%` as any, backgroundColor: colors.primary },
+                          { width: `${Math.min(gPct, 100)}%` as DimensionValue, backgroundColor: colors.primary },
                         ]}
                       />
                     </View>
@@ -384,5 +408,20 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 8,
+  },
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 16,
+    marginBottom: 8,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: "Inter_400Regular",
   },
 });

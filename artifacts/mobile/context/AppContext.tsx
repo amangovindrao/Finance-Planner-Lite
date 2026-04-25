@@ -1,4 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as FileSystem from "expo-file-system";
+import * as Sharing from "expo-sharing";
 import React, {
   createContext,
   useCallback,
@@ -6,7 +8,7 @@ import React, {
   useEffect,
   useState,
 } from "react";
-import { Share } from "react-native";
+import { Platform, Share } from "react-native";
 
 export type Category =
   | "Food"
@@ -141,7 +143,7 @@ interface AppContextType {
   deleteTemplate: (id: string) => void;
   setPin: (p: string | null) => void;
   unlockWithPin: (p: string) => boolean;
-  exportCSV: () => void;
+  exportCSV: () => Promise<void>;
   getMonthExpenses: () => Expense[];
   getCategoryTotal: (c: Category) => number;
   getTotalSpent: () => number;
@@ -408,12 +410,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [pin]
   );
 
-  const exportCSV = useCallback(() => {
+  const exportCSV = useCallback(async () => {
     const headers = "Date,Category,Description,Amount,Recurring\n";
     const rows = expenses
       .map((e) => `${e.date},${e.category},"${e.description}",${e.amount},${e.isRecurring}`)
       .join("\n");
     const csv = headers + rows;
+
+    if (Platform.OS !== "web" && FileSystem.documentDirectory) {
+      try {
+        const fileUri = FileSystem.documentDirectory + "finance_export.csv";
+        await FileSystem.writeAsStringAsync(fileUri, csv, { encoding: FileSystem.EncodingType.UTF8 });
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(fileUri, { mimeType: "text/csv", dialogTitle: "Export Expenses CSV" });
+          return;
+        }
+      } catch (_) {
+        // fall through to Share.share
+      }
+    }
     Share.share({ message: csv, title: "Finance Export" });
   }, [expenses]);
 

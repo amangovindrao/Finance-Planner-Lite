@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import {
+  DimensionValue,
   Platform,
   ScrollView,
   StyleSheet,
@@ -124,7 +125,7 @@ export default function AnalyticsScreen() {
                     style={[
                       styles.barFill,
                       {
-                        width: `${pct}%` as any,
+                        width: `${pct}%` as DimensionValue,
                         backgroundColor: isOver ? colors.destructive : CATEGORY_COLORS[cat],
                       },
                     ]}

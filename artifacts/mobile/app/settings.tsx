@@ -3,6 +3,7 @@ import { router } from "expo-router";
 import React, { useState } from "react";
 import {
   Alert,
+  DimensionValue,
   Modal,
   Platform,
   Pressable,
@@ -265,7 +266,7 @@ export default function SettingsScreen() {
                   {g.deadline && ` · Due ${g.deadline}`}
                 </Text>
                 <View style={s.goalBar}>
-                  <View style={[s.goalFill, { width: `${Math.min(pct, 100)}%` as any }]} />
+                  <View style={[s.goalFill, { width: `${Math.min(pct, 100)}%` as DimensionValue }]} />
                 </View>
                 <View style={s.addFundRow}>
                   <TextInput
