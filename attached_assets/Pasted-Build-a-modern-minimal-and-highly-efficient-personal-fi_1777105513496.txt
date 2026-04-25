@@ -1,0 +1,62 @@
+Build a modern, minimal, and highly efficient personal finance tracker mobile app designed specifically for college students.
+
+The app should include three main sections: Budget Tracker, Insights Dashboard, and To-Do Manager.
+
+Core Requirements:
+
+1. Budget System:
+
+* Allow users to set a monthly budget
+* Include predefined categories: Food, Transport, Subscriptions, Shopping, Education, Miscellaneous
+* Enable quick expense entry with minimal taps
+* Auto-categorize expenses based on keywords
+* Show real-time remaining balance
+
+2. Budget Variance:
+
+* Display budget vs actual spending
+* Highlight overspending with visual indicators (red/green)
+* Show percentage of budget used
+* Provide alerts when nearing budget limit
+
+3. Dashboard:
+
+* Visual charts including pie chart (category distribution), bar chart (weekly spending), and progress indicators
+* Smooth animated transitions for charts
+* Clean card-based UI
+
+4. To-Do System:
+
+* Add, edit, delete tasks
+* Allow finance-related reminders like paying bills, subscriptions, or splitting expenses
+* Deadline-based notifications
+
+5. Advanced Features:
+
+* Recurring expenses (auto-added monthly)
+* Smart insights based on spending patterns
+* Savings goals with progress tracking
+* Quick-add expense templates
+* Spending streaks and habit tracking
+
+6. UI/UX Design:
+
+* Minimal and modern interface
+* Dark mode default with soft shadows or glassmorphism
+* Smooth animations (button clicks, chart loading, transitions)
+* Bottom navigation bar with 3 tabs (Home, Analytics, Tasks)
+
+7. Performance:
+
+* Offline-first app (no external APIs)
+* Use local database (SQLite or Hive)
+* Fast load time and smooth scrolling
+
+8. Extra Enhancements:
+
+* Search and filter expenses
+* Export data as CSV
+* Secure app with PIN or biometric lock
+* Daily spending summary notification
+
+The goal is to create a clean, fast, and intelligent budgeting app that not only tracks expenses but also helps students improve their financial habits.
