@@ -11,6 +11,12 @@ import React, {
 } from "react";
 import { Platform, Share } from "react-native";
 import {
+  cancelScheduledNotification,
+  requestNotificationPermissions,
+  scheduleTaskReminder,
+  sendImmediateNotification,
+} from "@/utils/notifications";
+import {
   DbAccount,
   DbBudget,
   DbExpense,
@@ -109,6 +115,16 @@ export interface Template {
   category: Category;
 }
 
+export interface NotificationPrefs {
+  budgetAlerts: boolean;
+  taskReminders: boolean;
+}
+
+const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
+  budgetAlerts: true,
+  taskReminders: true,
+};
+
 const DEFAULT_BUDGET: Budget = {
   totalAmount: 1500,
   categoryLimits: {
@@ -133,6 +149,7 @@ const AS_KEYS = {
   accounts: "@ft_accounts",
   userName: "@ft_user_name",
   isOnboarded: "@ft_is_onboarded",
+  notifPrefs: "@ft_notif_prefs",
 };
 
 function generateId(): string {
@@ -229,6 +246,7 @@ interface AppContextType {
   isLoaded: boolean;
   userName: string;
   isOnboarded: boolean;
+  notificationPrefs: NotificationPrefs;
   addExpense: (e: Omit<Expense, "id">) => void;
   updateExpense: (id: string, u: Partial<Expense>) => void;
   deleteExpense: (id: string) => void;
@@ -254,6 +272,7 @@ interface AppContextType {
   getTotalBalance: () => number;
   getInsights: () => string[];
   completeOnboarding: (name: string, budget: number, initialAccounts: Omit<Account, "id">[]) => void;
+  updateNotificationPrefs: (prefs: Partial<NotificationPrefs>) => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -271,8 +290,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [userName, setUserName] = useState("");
   const [isOnboarded, setIsOnboarded] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [notificationPrefs, setNotificationPrefs] = useState<NotificationPrefs>(DEFAULT_NOTIFICATION_PREFS);
   const currentMonth = new Date().toISOString().slice(0, 7);
   const initialized = useRef(false);
+  const notifPrefsRef = useRef<NotificationPrefs>(DEFAULT_NOTIFICATION_PREFS);
+  const notifiedThresholds = useRef<Set<string>>(new Set());
+  const taskNotifIds = useRef<Record<string, string>>({});
+  const budgetRef = useRef<Budget>(DEFAULT_BUDGET);
+  const expensesRef = useRef<Expense[]>([]);
+
+  useEffect(() => { expensesRef.current = expenses; }, [expenses]);
+  useEffect(() => { budgetRef.current = budget; }, [budget]);
+  useEffect(() => { notifPrefsRef.current = notificationPrefs; }, [notificationPrefs]);
 
   useEffect(() => {
     if (initialized.current) return;
@@ -282,6 +311,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } else {
       loadFromSQLite();
     }
+    requestNotificationPermissions();
   }, []);
 
   async function loadFromAsyncStorage() {
@@ -302,6 +332,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const loadedUserName: string = map[AS_KEYS.userName] ?? "";
       const loadedIsOnboarded: boolean = map[AS_KEYS.isOnboarded] === "true";
       const lastMonth: string = map[AS_KEYS.lastMonth] ?? "";
+      const loadedNotifPrefs: NotificationPrefs = map[AS_KEYS.notifPrefs]
+        ? { ...DEFAULT_NOTIFICATION_PREFS, ...JSON.parse(map[AS_KEYS.notifPrefs]!) }
+        : DEFAULT_NOTIFICATION_PREFS;
 
       let updatedExpenses = [...loadedExpenses];
       if (lastMonth !== currentMonth) {
@@ -331,6 +364,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setStreak(loadedStreak);
       setUserName(loadedUserName);
       setIsOnboarded(loadedIsOnboarded);
+      setNotificationPrefs(loadedNotifPrefs);
+      notifPrefsRef.current = loadedNotifPrefs;
     } catch (err) {
       console.warn("AS load error:", err);
     } finally {
@@ -368,6 +403,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const loadedUserName = userNameRow?.value ?? "";
       const onboardedRow = db.getFirstSync<{ value: string }>("SELECT value FROM settings WHERE key = 'is_onboarded'");
       const loadedIsOnboarded = onboardedRow?.value === "true";
+      const notifRow = db.getFirstSync<{ value: string }>("SELECT value FROM settings WHERE key = 'notif_prefs'");
+      const loadedNotifPrefs: NotificationPrefs = notifRow?.value
+        ? { ...DEFAULT_NOTIFICATION_PREFS, ...JSON.parse(notifRow.value) }
+        : DEFAULT_NOTIFICATION_PREFS;
 
       let updatedExpenses = [...loadedExpenses];
       if (lastMonth !== currentMonth) {
@@ -399,6 +438,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setStreak(loadedStreak);
       setUserName(loadedUserName);
       setIsOnboarded(loadedIsOnboarded);
+      setNotificationPrefs(loadedNotifPrefs);
+      notifPrefsRef.current = loadedNotifPrefs;
     } catch (err) {
       console.warn("SQLite load error:", err);
       loadFromAsyncStorage();
@@ -487,6 +528,50 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setExpenses((prev) => {
       const next = [newExpense, ...prev];
       asSet("expenses", next);
+
+      if (notifPrefsRef.current.budgetAlerts) {
+        const month = new Date().toISOString().slice(0, 7);
+        const monthExp = next.filter((exp) => exp.date.startsWith(month));
+
+        const bud = budgetRef.current;
+        const catTotal = monthExp
+          .filter((exp) => exp.category === e.category)
+          .reduce((s, exp) => s + exp.amount, 0);
+        const catLimit = bud.categoryLimits[e.category];
+        if (catLimit > 0) {
+          const catPct = (catTotal / catLimit) * 100;
+          if (catPct >= 100 && !notifiedThresholds.current.has(`${e.category}-100`)) {
+            notifiedThresholds.current.add(`${e.category}-100`);
+            sendImmediateNotification(
+              `${e.category} budget exceeded!`,
+              `You've spent all of your $${catLimit} ${e.category} budget this month.`
+            );
+          } else if (catPct >= 80 && !notifiedThresholds.current.has(`${e.category}-80`)) {
+            notifiedThresholds.current.add(`${e.category}-80`);
+            sendImmediateNotification(
+              `${e.category} budget at 80%`,
+              `You've used 80% of your $${catLimit} ${e.category} budget.`
+            );
+          }
+        }
+
+        const total = monthExp.reduce((s, exp) => s + exp.amount, 0);
+        const totalPct = bud.totalAmount > 0 ? (total / bud.totalAmount) * 100 : 0;
+        if (totalPct >= 100 && !notifiedThresholds.current.has("total-100")) {
+          notifiedThresholds.current.add("total-100");
+          sendImmediateNotification(
+            "Monthly budget exceeded!",
+            `You've spent all of your $${bud.totalAmount} monthly budget.`
+          );
+        } else if (totalPct >= 80 && !notifiedThresholds.current.has("total-80")) {
+          notifiedThresholds.current.add("total-80");
+          sendImmediateNotification(
+            "Monthly budget at 80%",
+            `You've used 80% of your $${bud.totalAmount} monthly budget.`
+          );
+        }
+      }
+
       return next;
     });
 
@@ -562,6 +647,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       asSet("tasks", next);
       return next;
     });
+    if (notifPrefsRef.current.taskReminders && t.deadline) {
+      scheduleTaskReminder(t.title, t.deadline).then((notifId) => {
+        if (notifId) taskNotifIds.current[id] = notifId;
+      });
+    }
   }, []);
 
   const updateTask = useCallback((id: string, u: Partial<Task>) => {
@@ -574,6 +664,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           [task.title, task.description, task.deadline ?? null, task.completed ? 1 : 0, task.category, id]
         );
         asSet("tasks", updated);
+
+        if (notifPrefsRef.current.taskReminders) {
+          const oldNotifId = taskNotifIds.current[id];
+          if (oldNotifId) {
+            cancelScheduledNotification(oldNotifId);
+            delete taskNotifIds.current[id];
+          }
+          if (task.deadline && !task.completed) {
+            scheduleTaskReminder(task.title, task.deadline).then((notifId) => {
+              if (notifId) taskNotifIds.current[id] = notifId;
+            });
+          }
+        }
       }
       return updated;
     });
@@ -586,6 +689,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       asSet("tasks", next);
       return next;
     });
+    const notifId = taskNotifIds.current[id];
+    if (notifId) {
+      cancelScheduledNotification(notifId);
+      delete taskNotifIds.current[id];
+    }
   }, []);
 
   const addSavingsGoal = useCallback((g: Omit<SavingsGoal, "id">) => {
@@ -775,9 +883,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  const updateNotificationPrefs = useCallback((prefs: Partial<NotificationPrefs>) => {
+    setNotificationPrefs((prev) => {
+      const next = { ...prev, ...prefs };
+      notifPrefsRef.current = next;
+      if (Platform.OS !== "web") {
+        dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES ('notif_prefs', ?)", [JSON.stringify(next)]);
+      } else {
+        AsyncStorage.setItem(AS_KEYS.notifPrefs, JSON.stringify(next));
+      }
+      return next;
+    });
+  }, []);
+
   const value: AppContextType = {
     expenses, budget, tasks, savingsGoals, templates, accounts,
     pin, isLocked, streak, currentMonth, isLoaded, userName, isOnboarded,
+    notificationPrefs,
     addExpense, updateExpense, deleteExpense, updateBudget,
     addTask, updateTask, deleteTask,
     addSavingsGoal, updateSavingsGoal, deleteSavingsGoal,
@@ -787,6 +909,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     exportCSV,
     getMonthExpenses, getCategoryTotal, getTotalSpent, getTodaySpent, getTotalBalance, getInsights,
     completeOnboarding,
+    updateNotificationPrefs,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

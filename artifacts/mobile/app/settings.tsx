@@ -9,6 +9,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -27,6 +28,7 @@ export default function SettingsScreen() {
     savingsGoals,
     templates,
     pin,
+    notificationPrefs,
     updateBudget,
     addSavingsGoal,
     updateSavingsGoal,
@@ -34,6 +36,7 @@ export default function SettingsScreen() {
     deleteTemplate,
     setPin,
     exportCSV,
+    updateNotificationPrefs,
   } = useApp();
 
   const [showBudget, setShowBudget] = useState(false);
@@ -309,6 +312,46 @@ export default function SettingsScreen() {
             ))}
           </View>
         )}
+
+        <View style={s.section}>
+          <Text style={s.sectionLabel}>Notifications</Text>
+          <View style={s.row}>
+            <View style={s.rowIcon}>
+              <Ionicons name="notifications-outline" size={18} color={colors.primary} />
+            </View>
+            <View style={s.rowInfo}>
+              <Text style={s.rowTitle}>Budget Alerts</Text>
+              <Text style={s.rowSub}>Alert at 80% and 100% of budget limits</Text>
+            </View>
+            <Switch
+              value={notificationPrefs.budgetAlerts}
+              onValueChange={(v) => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                updateNotificationPrefs({ budgetAlerts: v });
+              }}
+              trackColor={{ false: colors.muted, true: colors.primary + "88" }}
+              thumbColor={notificationPrefs.budgetAlerts ? colors.primary : colors.mutedForeground}
+            />
+          </View>
+          <View style={s.row}>
+            <View style={s.rowIcon}>
+              <Ionicons name="alarm-outline" size={18} color={colors.accent} />
+            </View>
+            <View style={s.rowInfo}>
+              <Text style={s.rowTitle}>Task Reminders</Text>
+              <Text style={s.rowSub}>Remind 1 day before task deadline</Text>
+            </View>
+            <Switch
+              value={notificationPrefs.taskReminders}
+              onValueChange={(v) => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                updateNotificationPrefs({ taskReminders: v });
+              }}
+              trackColor={{ false: colors.muted, true: colors.accent + "88" }}
+              thumbColor={notificationPrefs.taskReminders ? colors.accent : colors.mutedForeground}
+            />
+          </View>
+        </View>
 
         <View style={s.section}>
           <Text style={s.sectionLabel}>Security</Text>
