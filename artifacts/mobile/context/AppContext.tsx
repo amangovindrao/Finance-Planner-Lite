@@ -261,6 +261,12 @@ function parseBudget(row: DbBudget): Budget {
   };
 }
 
+export interface MonthlyTotal {
+  month: string;
+  label: string;
+  total: number;
+}
+
 interface AppContextType {
   expenses: Expense[];
   budget: Budget;
@@ -306,6 +312,7 @@ interface AppContextType {
   getTodaySpent: () => number;
   getTotalBalance: () => number;
   getInsights: () => string[];
+  getMonthlyTotals: (numMonths?: number) => MonthlyTotal[];
   completeOnboarding: (name: string, budget: number, initialAccounts: Omit<Account, "id">[]) => void;
   updateNotificationPrefs: (prefs: Partial<NotificationPrefs>) => void;
   togglePrivacyMode: () => void;
@@ -559,6 +566,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const getTotalBalance = useCallback((): number => {
     return accounts.reduce((s, a) => s + a.balance, 0);
   }, [accounts]);
+
+  const getMonthlyTotals = useCallback((numMonths = 6): MonthlyTotal[] => {
+    const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const results: MonthlyTotal[] = [];
+    const now = new Date();
+    for (let i = numMonths - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const label = MONTH_NAMES[d.getMonth()];
+      const total = expenses
+        .filter((e) => e.date.startsWith(month))
+        .reduce((s, e) => s + e.amount, 0);
+      results.push({ month, label, total });
+    }
+    return results;
+  }, [expenses]);
 
   const getInsights = useCallback((): string[] => {
     const insights: string[] = [];
@@ -1073,7 +1096,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     addLoan, updateLoan, deleteLoan,
     setPin, unlockWithPin,
     exportCSV,
-    getMonthExpenses, getCategoryTotal, getTotalSpent, getTodaySpent, getTotalBalance, getInsights,
+    getMonthExpenses, getCategoryTotal, getTotalSpent, getTodaySpent, getTotalBalance, getInsights, getMonthlyTotals,
     completeOnboarding,
     updateNotificationPrefs,
     togglePrivacyMode,

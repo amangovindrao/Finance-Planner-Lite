@@ -23,9 +23,11 @@ const SCREEN_WIDTH = Dimensions.get("window").width;
 export default function AnalyticsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { expenses, budget, accounts, currentMonth, getInsights } = useApp();
+  const { expenses, budget, accounts, currentMonth, getInsights, getMonthlyTotals } = useApp();
   const [period, setPeriod] = useState<Period>("month");
+  const [selectedTrendMonth, setSelectedTrendMonth] = useState<string | null>(null);
   const insights = getInsights();
+  const monthlyTotals = getMonthlyTotals(6);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -39,14 +41,21 @@ export default function AnalyticsScreen() {
     return expenses.filter((e) => new Date(e.date) >= weekAgo);
   }, [expenses, period, currentMonth]);
 
+  const pieFilteredExpenses = useMemo(() => {
+    if (selectedTrendMonth) {
+      return expenses.filter((e) => e.date.startsWith(selectedTrendMonth));
+    }
+    return filteredExpenses;
+  }, [expenses, selectedTrendMonth, filteredExpenses]);
+
   const categoryTotals = useMemo((): Record<Category, number> => {
     const d: Record<Category, number> = {
       Food: 0, Transport: 0, Subscriptions: 0,
       Shopping: 0, Education: 0, Miscellaneous: 0,
     };
-    filteredExpenses.forEach((e) => { d[e.category] += e.amount; });
+    pieFilteredExpenses.forEach((e) => { d[e.category] += e.amount; });
     return d;
-  }, [filteredExpenses]);
+  }, [pieFilteredExpenses]);
 
   const pieData = useMemo(() => {
     return CATEGORIES
@@ -133,9 +142,71 @@ export default function AnalyticsScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: bottomPad + 90, paddingHorizontal: 16, gap: 20 }}
       >
+        <View style={[styles.card, { backgroundColor: colors.card }]}>
+          <View style={styles.trendHeader}>
+            <Text style={[styles.cardTitle, { color: colors.foreground }]}>Monthly Trends</Text>
+            {selectedTrendMonth && (
+              <TouchableOpacity onPress={() => setSelectedTrendMonth(null)} style={[styles.clearBtn, { backgroundColor: colors.muted }]}>
+                <Ionicons name="close" size={12} color={colors.mutedForeground} />
+                <Text style={[styles.clearBtnText, { color: colors.mutedForeground }]}>Clear</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          {selectedTrendMonth && (
+            <Text style={[styles.trendSubtitle, { color: colors.primary }]}>
+              Showing breakdown for {monthlyTotals.find((m) => m.month === selectedTrendMonth)?.label ?? selectedTrendMonth}
+            </Text>
+          )}
+          <View style={styles.trendBars}>
+            {(() => {
+              const maxTotal = Math.max(...monthlyTotals.map((m) => m.total), 1);
+              const currentYear = new Date().getFullYear();
+              return monthlyTotals.map((m) => {
+                const isSelected = selectedTrendMonth === m.month;
+                const isCurrentMonth = m.month === currentMonth;
+                const barHeight = Math.max((m.total / maxTotal) * 100, m.total > 0 ? 4 : 0);
+                const barColor = isSelected
+                  ? colors.primary
+                  : isCurrentMonth
+                  ? colors.primary + "99"
+                  : colors.border;
+                const monthYear = parseInt(m.month.slice(0, 4));
+                const displayLabel = monthYear < currentYear
+                  ? `${m.label} '${String(monthYear).slice(2)}`
+                  : m.label;
+                return (
+                  <TouchableOpacity
+                    key={m.month}
+                    style={styles.trendBarWrapper}
+                    onPress={() => setSelectedTrendMonth(isSelected ? null : m.month)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.trendAmount, { color: isSelected ? colors.primary : colors.mutedForeground }]}>
+                      {m.total > 0 ? `₹${m.total >= 1000 ? `${(m.total / 1000).toFixed(1)}k` : m.total.toFixed(0)}` : ""}
+                    </Text>
+                    <View style={[styles.trendBarArea, { backgroundColor: colors.muted, borderRadius: 6 }]}>
+                      <View
+                        style={[
+                          styles.trendBarFill,
+                          { height: `${barHeight}%` as DimensionValue, backgroundColor: barColor },
+                        ]}
+                      />
+                    </View>
+                    <Text style={[styles.trendLabel, { color: isSelected ? colors.foreground : colors.mutedForeground, fontFamily: isSelected ? "Inter_600SemiBold" : "Inter_400Regular" }]}>
+                      {displayLabel}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              });
+            })()}
+          </View>
+        </View>
+
         {pieData.length > 0 && (
           <View style={[styles.card, { backgroundColor: colors.card }]}>
-            <Text style={[styles.cardTitle, { color: colors.foreground }]}>Category Breakdown</Text>
+            <Text style={[styles.cardTitle, { color: colors.foreground }]}>
+              Category Breakdown{selectedTrendMonth ? ` · ${monthlyTotals.find((m) => m.month === selectedTrendMonth)?.label}` : ""}
+            </Text>
             <PieChart
               data={pieData}
               width={SCREEN_WIDTH - 64}
@@ -151,7 +222,9 @@ export default function AnalyticsScreen() {
 
         {pieData.length === 0 && (
           <View style={[styles.card, { backgroundColor: colors.card }]}>
-            <Text style={[styles.cardTitle, { color: colors.foreground }]}>Category Breakdown</Text>
+            <Text style={[styles.cardTitle, { color: colors.foreground }]}>
+              Category Breakdown{selectedTrendMonth ? ` · ${monthlyTotals.find((m) => m.month === selectedTrendMonth)?.label}` : ""}
+            </Text>
             <View style={[styles.emptyChart, { borderColor: colors.border }]}>
               <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>No expenses this period</Text>
             </View>
@@ -287,4 +360,14 @@ const styles = StyleSheet.create({
   },
   insightBullet: { width: 6, height: 6, borderRadius: 3, marginTop: 5 },
   insightText: { flex: 1, fontSize: 14, fontFamily: "Inter_400Regular" },
+  trendHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  trendSubtitle: { fontSize: 12, fontFamily: "Inter_500Medium", marginTop: -6 },
+  clearBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  clearBtnText: { fontSize: 12, fontFamily: "Inter_500Medium" },
+  trendBars: { flexDirection: "row", gap: 6, height: 130 },
+  trendBarWrapper: { flex: 1, alignItems: "center", flexDirection: "column" },
+  trendAmount: { fontSize: 9, fontFamily: "Inter_500Medium", textAlign: "center", height: 14 },
+  trendBarArea: { flex: 1, width: "100%", justifyContent: "flex-end" },
+  trendBarFill: { width: "100%", borderRadius: 6 },
+  trendLabel: { fontSize: 11, textAlign: "center", height: 16, marginTop: 2 },
 });
