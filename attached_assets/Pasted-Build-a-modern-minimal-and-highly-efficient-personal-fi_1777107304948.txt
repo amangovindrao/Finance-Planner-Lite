@@ -1,0 +1,87 @@
+Build a modern, minimal, and highly efficient personal finance mobile app designed for college students with multi-account (bank + cash) tracking.
+
+Core Structure:
+The app should have 3 main sections: Home Dashboard, Analytics, and Tasks.
+
+1. User Profile Setup:
+
+* Ask for user name and monthly budget
+* Allow users to add multiple financial sources:
+
+  * Bank accounts (custom names like SBI, HDFC, etc.)
+  * Wallets (Paytm, PhonePe, etc.)
+  * Cash option
+* Each source should have an initial balance
+
+2. Expense Management:
+
+* Add expense via floating action button
+* Use a bottom sheet UI for fast input
+* Fields:
+
+  * Amount (auto focus)
+  * Category (icons)
+  * Payment source (user-added banks, wallets, or cash)
+  * Optional note
+* Deduct expense from selected source balance
+* Enable quick-add templates
+
+3. Home Dashboard:
+
+* Personalized greeting (e.g., “Good Morning, [Name]”)
+* Show total combined balance across all accounts
+* Show remaining monthly budget
+* Show today’s spending
+* Budget progress bar with animation
+* Quick add expense button
+
+4. Budget & Variance:
+
+* Show budget vs actual spending
+* Highlight overspending visually (red indicators)
+* Show percentage usage and remaining balance
+
+5. Analytics Dashboard:
+
+* Category-wise spending (pie chart)
+* Weekly spending trends (bar graph)
+* Bank/source-wise spending breakdown
+* Insights based on spending behavior
+
+6. Tasks & Reminders:
+
+* Add financial tasks (pay bills, recharge, split money)
+* Deadline-based reminders
+
+7. Advanced Features:
+
+* Recurring expenses (auto-add monthly)
+* Smart insights (spending habits, suggestions)
+* Savings goals tracking
+* Split expenses with friends
+* Expense tagging system
+* Daily spending notifications
+* Gamification (streaks, achievements)
+
+8. UI/UX:
+
+* Minimal, modern, and clean interface
+* Dark mode default with optional light mode toggle
+* Glassmorphism or soft UI cards
+* Smooth animations (transitions, number count, progress bars)
+* Bottom navigation with 3 tabs
+* Gesture-based interactions (swipe to delete/edit)
+
+9. Performance & Storage:
+
+* Offline-first app
+* Use local database (SQLite or Hive)
+* Fast and responsive UI
+
+10. Extra Enhancements:
+
+* Search and filter expenses
+* Export data (CSV or PDF)
+* Secure app with PIN or biometric lock
+
+The app should feel fast, visually premium, and intelligent, helping students not only track money but improve their financial behavior through insights and automation.
