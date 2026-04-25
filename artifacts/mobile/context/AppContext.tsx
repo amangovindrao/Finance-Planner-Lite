@@ -396,6 +396,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       asSet("expenses", next);
       return next;
     });
+
+    setStreak((prevStreak) => {
+      const today = new Date().toISOString().slice(0, 10);
+      const nextStreak = prevStreak + 1;
+      if (Platform.OS !== "web") {
+        dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES ('streak', ?)", [nextStreak.toString()]);
+        dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES ('streak_date', ?)", [today]);
+      } else {
+        AsyncStorage.setItem(AS_KEYS.streak, nextStreak.toString());
+      }
+      return nextStreak;
+    });
   }, []);
 
   const updateExpense = useCallback((id: string, u: Partial<Expense>) => {

@@ -60,7 +60,7 @@ export function TaskForm({ visible, onClose, editTask }: Props) {
     }
   }, [editTask, visible]);
 
-  function getDeadline(): string | undefined {
+  function getDeadlineFromDays(): string | undefined {
     if (daysUntilDue === null) return undefined;
     const d = new Date();
     d.setDate(d.getDate() + daysUntilDue);
@@ -70,9 +70,14 @@ export function TaskForm({ visible, onClose, editTask }: Props) {
   function handleSubmit() {
     if (!title.trim()) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    const deadline = editTask?.deadline ?? getDeadline();
+    const deadline = getDeadlineFromDays();
     if (editTask) {
-      updateTask(editTask.id, { title: title.trim(), description, category, deadline });
+      updateTask(editTask.id, {
+        title: title.trim(),
+        description,
+        category,
+        deadline: daysUntilDue !== null ? deadline : editTask.deadline,
+      });
     } else {
       addTask({ title: title.trim(), description, category, deadline, completed: false });
     }
@@ -131,6 +136,11 @@ export function TaskForm({ visible, onClose, editTask }: Props) {
       borderWidth: 1, borderColor: colors.border,
     },
     dayBtnText: { fontSize: 13, fontFamily: "Inter_500Medium" },
+    currentDeadline: {
+      flexDirection: "row", padding: 10, borderRadius: 10, alignItems: "center",
+    },
+    deadlineLabel: { fontSize: 13, fontFamily: "Inter_400Regular" },
+    deadlineValue: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
     submitBtn: { borderRadius: 14, padding: 16, alignItems: "center", marginTop: 4 },
     submitText: { fontSize: 16, fontFamily: "Inter_700Bold" },
   });
@@ -168,6 +178,13 @@ export function TaskForm({ visible, onClose, editTask }: Props) {
           </>
         )}
 
+        {editTask?.deadline && (
+          <View style={[s.currentDeadline, { backgroundColor: colors.secondary }]}>
+            <Text style={[s.deadlineLabel, { color: colors.mutedForeground }]}>Current deadline: </Text>
+            <Text style={[s.deadlineValue, { color: colors.foreground }]}>{editTask.deadline}</Text>
+          </View>
+        )}
+
         <TextInput
           style={s.input}
           value={title}
@@ -201,24 +218,22 @@ export function TaskForm({ visible, onClose, editTask }: Props) {
           ))}
         </View>
 
-        {!editTask && (
-          <>
-            <Text style={s.label}>Due Date</Text>
-            <View style={s.daysRow}>
-              {DUE_OPTIONS.map((o) => (
-                <TouchableOpacity
-                  key={o.days}
-                  style={[s.dayBtn, daysUntilDue === o.days && { backgroundColor: colors.accent + "33", borderColor: colors.accent }]}
-                  onPress={() => setDaysUntilDue(daysUntilDue === o.days ? null : o.days)}
-                >
-                  <Text style={[s.dayBtnText, { color: daysUntilDue === o.days ? colors.accent : colors.mutedForeground }]}>
-                    {o.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </>
-        )}
+        <>
+          <Text style={s.label}>{editTask ? "Change Due Date" : "Due Date"}</Text>
+          <View style={s.daysRow}>
+            {DUE_OPTIONS.map((o) => (
+              <TouchableOpacity
+                key={o.days}
+                style={[s.dayBtn, daysUntilDue === o.days && { backgroundColor: colors.accent + "33", borderColor: colors.accent }]}
+                onPress={() => setDaysUntilDue(daysUntilDue === o.days ? null : o.days)}
+              >
+                <Text style={[s.dayBtnText, { color: daysUntilDue === o.days ? colors.accent : colors.mutedForeground }]}>
+                  {o.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </>
 
         <TouchableOpacity
           style={[s.submitBtn, { backgroundColor: colors.accent }]}
