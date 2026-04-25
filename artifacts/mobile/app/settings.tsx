@@ -1,9 +1,11 @@
 import * as Haptics from "expo-haptics";
+import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
   Alert,
   DimensionValue,
+  Image,
   Modal,
   Platform,
   Pressable,
@@ -30,6 +32,8 @@ export default function SettingsScreen() {
     pin,
     notificationPrefs,
     isPrivacyMode,
+    userName,
+    profilePhoto,
     updateBudget,
     addSavingsGoal,
     updateSavingsGoal,
@@ -39,11 +43,15 @@ export default function SettingsScreen() {
     exportCSV,
     updateNotificationPrefs,
     togglePrivacyMode,
+    updateUserName,
+    updateProfilePhoto,
   } = useApp();
 
   const [showBudget, setShowBudget] = useState(false);
   const [showGoalForm, setShowGoalForm] = useState(false);
   const [showPinForm, setShowPinForm] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState("");
   const [budgetInput, setBudgetInput] = useState(budget.totalAmount.toString());
   const [catInputs, setCatInputs] = useState<Record<string, string>>(
     Object.fromEntries(CATEGORIES.map((c) => [c, budget.categoryLimits[c].toString()]))
@@ -126,8 +134,73 @@ export default function SettingsScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   }
 
+  async function pickProfileImage() {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permission needed", "Please allow access to your photos.");
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.7,
+      });
+      if (!result.canceled && result.assets.length > 0) {
+        updateProfilePhoto(result.assets[0].uri);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
+    } catch {
+      Alert.alert("Error", "Could not pick image.");
+    }
+  }
+
+  function saveName() {
+    const trimmed = nameInput.trim();
+    if (trimmed) {
+      updateUserName(trimmed);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+    setEditingName(false);
+  }
+
+  const initials = userName ? userName.trim().split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase() : "?";
+
   const s = StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
+    profileSection: {
+      marginHorizontal: 16, marginTop: 20,
+      backgroundColor: colors.card, borderRadius: 20, padding: 20,
+      flexDirection: "row", alignItems: "center", gap: 16,
+    },
+    avatarWrapper: { position: "relative" },
+    avatarCircle: {
+      width: 64, height: 64, borderRadius: 32,
+      backgroundColor: colors.primary + "22",
+      alignItems: "center", justifyContent: "center",
+    },
+    avatarImage: { width: 64, height: 64, borderRadius: 32 },
+    avatarEditBadge: {
+      position: "absolute", bottom: 0, right: 0,
+      width: 22, height: 22, borderRadius: 11,
+      backgroundColor: colors.primary,
+      alignItems: "center", justifyContent: "center",
+      borderWidth: 2, borderColor: colors.card,
+    },
+    avatarInitials: { fontSize: 22, fontFamily: "Inter_700Bold", color: colors.primary },
+    profileInfo: { flex: 1 },
+    profileNameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+    profileName: { fontSize: 18, fontFamily: "Inter_600SemiBold", color: colors.foreground },
+    profileSub: { fontSize: 13, fontFamily: "Inter_400Regular", color: colors.mutedForeground, marginTop: 2 },
+    profileEditInput: {
+      fontSize: 18, fontFamily: "Inter_600SemiBold",
+      color: colors.foreground,
+      borderBottomWidth: 1, borderBottomColor: colors.primary,
+      paddingVertical: 2, flex: 1,
+    },
+    profileSaveBtn: { paddingHorizontal: 10, paddingVertical: 4 },
+    profileSaveBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold", color: colors.primary },
     header: {
       flexDirection: "row", alignItems: "flex-end",
       paddingTop: topPad + 12, paddingHorizontal: 16, paddingBottom: 12,
@@ -230,6 +303,47 @@ export default function SettingsScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: bottomPad + 20 }}
       >
+        <TouchableOpacity style={s.profileSection} activeOpacity={0.85} onPress={() => { if (!editingName) { setNameInput(userName); setEditingName(true); } }}>
+          <TouchableOpacity style={s.avatarWrapper} onPress={pickProfileImage}>
+            {profilePhoto ? (
+              <Image source={{ uri: profilePhoto }} style={s.avatarImage} />
+            ) : (
+              <View style={s.avatarCircle}>
+                <Text style={s.avatarInitials}>{initials}</Text>
+              </View>
+            )}
+            <View style={s.avatarEditBadge}>
+              <Ionicons name="camera" size={11} color="#fff" />
+            </View>
+          </TouchableOpacity>
+
+          <View style={s.profileInfo}>
+            {editingName ? (
+              <View style={s.profileNameRow}>
+                <TextInput
+                  style={s.profileEditInput}
+                  value={nameInput}
+                  onChangeText={setNameInput}
+                  autoFocus
+                  returnKeyType="done"
+                  onSubmitEditing={saveName}
+                  onBlur={saveName}
+                  selectTextOnFocus
+                />
+                <TouchableOpacity style={s.profileSaveBtn} onPress={saveName}>
+                  <Text style={s.profileSaveBtnText}>Save</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={s.profileNameRow}>
+                <Text style={s.profileName}>{userName || "Your Name"}</Text>
+                <Ionicons name="pencil-outline" size={14} color={colors.mutedForeground} />
+              </View>
+            )}
+            <Text style={s.profileSub}>Tap name to edit · Tap photo to change</Text>
+          </View>
+        </TouchableOpacity>
+
         <View style={s.section}>
           <Text style={s.sectionLabel}>Budget</Text>
           <TouchableOpacity style={s.row} onPress={() => setShowBudget(true)}>

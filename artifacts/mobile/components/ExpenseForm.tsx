@@ -1,6 +1,7 @@
 import * as Haptics from "expo-haptics";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
+  Animated,
   Modal,
   Platform,
   Pressable,
@@ -30,6 +31,17 @@ interface Props {
   editExpense?: Expense;
 }
 
+const CATEGORY_ICONS: Record<string, string> = {
+  Food: "restaurant-outline",
+  Transport: "car-outline",
+  Shopping: "bag-outline",
+  Entertainment: "game-controller-outline",
+  Health: "heart-outline",
+  Education: "book-outline",
+  Bills: "receipt-outline",
+  Miscellaneous: "ellipsis-horizontal-outline",
+};
+
 export function ExpenseForm({ visible, onClose, editExpense }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -42,6 +54,32 @@ export function ExpenseForm({ visible, onClose, editExpense }: Props) {
   const [showSaveTemplate, setShowSaveTemplate] = useState(false);
   const [templateName, setTemplateName] = useState("");
   const [sourceId, setSourceId] = useState<string | null>(null);
+  const [amountFocused, setAmountFocused] = useState(false);
+
+  const amountScale = useRef(new Animated.Value(1)).current;
+  const sheetY = useRef(new Animated.Value(600)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.spring(sheetY, {
+        toValue: 0,
+        tension: 65,
+        friction: 11,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      sheetY.setValue(600);
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    Animated.spring(amountScale, {
+      toValue: amountFocused ? 1.04 : 1,
+      tension: 120,
+      friction: 8,
+      useNativeDriver: true,
+    }).start();
+  }, [amountFocused]);
 
   useEffect(() => {
     if (editExpense) {
@@ -98,225 +136,374 @@ export function ExpenseForm({ visible, onClose, editExpense }: Props) {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }
 
-  const s = createStyles(colors, insets);
+  const hasAmount = !!amount && parseFloat(amount) > 0;
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible={visible} animationType="none" transparent onRequestClose={onClose}>
       <Pressable style={s.backdrop} onPress={onClose} />
-      <View style={s.sheet}>
+      <Animated.View style={[s.sheet, { transform: [{ translateY: sheetY }], paddingBottom: insets.bottom + 24 }]}>
         <View style={s.handle} />
+
         <View style={s.header}>
-          <Text style={s.title}>{editExpense ? "Edit Expense" : "Add Expense"}</Text>
-          <TouchableOpacity onPress={onClose}>
-            <Ionicons name="close" size={22} color={colors.mutedForeground} />
+          <Text style={[s.title, { color: colors.foreground }]}>
+            {editExpense ? "Edit Expense" : "Add Expense"}
+          </Text>
+          <TouchableOpacity onPress={onClose} style={s.closeBtn}>
+            <Ionicons name="close" size={20} color={colors.mutedForeground} />
           </TouchableOpacity>
         </View>
 
-        {templates.length > 0 && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.templates}>
-            {templates.map((t) => (
-              <TouchableOpacity key={t.id} style={s.templateChip} onPress={() => applyTemplate(t)}>
-                <Text style={s.templateText}>{t.name}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        )}
-
-        <View style={s.amountRow}>
-          <Text style={s.currencySign}>₹</Text>
-          <TextInput
-            style={s.amountInput}
-            value={amount}
-            onChangeText={setAmount}
-            keyboardType="decimal-pad"
-            placeholder="0.00"
-            placeholderTextColor={colors.mutedForeground}
-            autoFocus
-          />
-        </View>
-
-        <TextInput
-          style={s.descInput}
-          value={description}
-          onChangeText={handleDescriptionChange}
-          placeholder="Description (auto-categorizes)"
-          placeholderTextColor={colors.mutedForeground}
-        />
-
-        <Text style={s.sectionLabel}>Category</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.catScroll}>
-          {CATEGORIES.map((c) => (
-            <TouchableOpacity
-              key={c}
-              style={[
-                s.catChip,
-                category === c && {
-                  backgroundColor: CATEGORY_COLORS[c] + "33",
-                  borderColor: CATEGORY_COLORS[c],
-                },
-              ]}
-              onPress={() => setCategory(c)}
-            >
-              <View style={[s.catDot, { backgroundColor: CATEGORY_COLORS[c] }]} />
-              <Text style={[s.catLabel, { color: category === c ? CATEGORY_COLORS[c] : colors.mutedForeground }]}>
-                {c}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        {accounts.length > 0 && (
-          <>
-            <Text style={s.sectionLabel}>Pay From</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.catScroll}>
-              <TouchableOpacity
-                style={[s.sourceChip, sourceId === null && { borderColor: colors.mutedForeground, backgroundColor: colors.mutedForeground + "20" }]}
-                onPress={() => setSourceId(null)}
-              >
-                <Ionicons name="ellipsis-horizontal" size={14} color={sourceId === null ? colors.foreground : colors.mutedForeground} />
-                <Text style={[s.sourceLabel, { color: sourceId === null ? colors.foreground : colors.mutedForeground }]}>None</Text>
-              </TouchableOpacity>
-              {accounts.map((a) => (
-                <TouchableOpacity
-                  key={a.id}
-                  style={[
-                    s.sourceChip,
-                    sourceId === a.id && { backgroundColor: a.color + "25", borderColor: a.color },
-                  ]}
-                  onPress={() => setSourceId(a.id)}
-                >
-                  <Ionicons name={a.icon as "card-outline"} size={14} color={sourceId === a.id ? a.color : colors.mutedForeground} />
-                  <Text style={[s.sourceLabel, { color: sourceId === a.id ? a.color : colors.mutedForeground }]}>
-                    {a.name}
-                  </Text>
-                  {sourceId === a.id && (
-                    <Text style={[s.sourceBalance, { color: a.color }]}>₹{a.balance.toFixed(0)}</Text>
-                  )}
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={s.scrollContent}
+        >
+          {templates.length > 0 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.templateRow}>
+              {templates.map((t) => (
+                <TouchableOpacity key={t.id} style={[s.templateChip, { backgroundColor: colors.secondary }]} onPress={() => applyTemplate(t)}>
+                  <Text style={[s.templateText, { color: colors.mutedForeground }]}>{t.name}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
-          </>
-        )}
+          )}
 
-        <View style={s.row}>
-          <TouchableOpacity
-            style={[s.toggle, isRecurring && { borderColor: colors.primary }]}
-            onPress={() => setIsRecurring(!isRecurring)}
-          >
-            <Ionicons
-              name={isRecurring ? "repeat" : "repeat-outline"}
-              size={18}
-              color={isRecurring ? colors.primary : colors.mutedForeground}
-            />
-            <Text style={[s.toggleLabel, { color: isRecurring ? colors.primary : colors.mutedForeground }]}>
-              Recurring
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={s.toggle}
-            onPress={() => setShowSaveTemplate(!showSaveTemplate)}
-          >
-            <Ionicons name="bookmark-outline" size={18} color={colors.mutedForeground} />
-            <Text style={[s.toggleLabel, { color: colors.mutedForeground }]}>Save template</Text>
-          </TouchableOpacity>
-        </View>
-
-        {showSaveTemplate && (
-          <View style={s.tmplRow}>
+          <Animated.View style={[s.amountBlock, { transform: [{ scale: amountScale }] }]}>
+            <Text style={[s.rupeeSign, { color: hasAmount ? colors.foreground : colors.mutedForeground }]}>₹</Text>
             <TextInput
-              style={s.tmplInput}
-              value={templateName}
-              onChangeText={setTemplateName}
-              placeholder="Template name"
-              placeholderTextColor={colors.mutedForeground}
+              style={[s.amountInput, { color: colors.foreground }]}
+              value={amount}
+              onChangeText={setAmount}
+              keyboardType="decimal-pad"
+              placeholder="0"
+              placeholderTextColor={colors.mutedForeground + "60"}
+              autoFocus
+              onFocus={() => setAmountFocused(true)}
+              onBlur={() => setAmountFocused(false)}
+              selectionColor={colors.primary}
             />
-            <TouchableOpacity style={s.tmplSave} onPress={handleSaveTemplate}>
-              <Text style={[s.tmplSaveText, { color: colors.primaryForeground }]}>Save</Text>
+          </Animated.View>
+
+          <TextInput
+            style={[s.noteInput, { backgroundColor: colors.secondary, color: colors.foreground }]}
+            value={description}
+            onChangeText={handleDescriptionChange}
+            placeholder="Add note (optional)"
+            placeholderTextColor={colors.mutedForeground + "80"}
+            returnKeyType="done"
+          />
+
+          <Text style={[s.sectionLabel, { color: colors.mutedForeground }]}>Category</Text>
+          <View style={s.chipGrid}>
+            {CATEGORIES.map((c) => {
+              const selected = category === c;
+              return (
+                <TouchableOpacity
+                  key={c}
+                  style={[
+                    s.catChip,
+                    {
+                      backgroundColor: selected ? colors.primary + "18" : colors.secondary,
+                      borderColor: selected ? colors.primary + "60" : "transparent",
+                    },
+                  ]}
+                  onPress={() => {
+                    setCategory(c);
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}
+                >
+                  <Ionicons
+                    name={CATEGORY_ICONS[c] as "restaurant-outline"}
+                    size={14}
+                    color={selected ? colors.primary : colors.mutedForeground}
+                  />
+                  <Text style={[s.catLabel, { color: selected ? colors.primary : colors.mutedForeground }]}>{c}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {accounts.length > 0 && (
+            <>
+              <Text style={[s.sectionLabel, { color: colors.mutedForeground }]}>Pay From</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.hScroll}>
+                <TouchableOpacity
+                  style={[s.payChip, { backgroundColor: sourceId === null ? colors.primary + "18" : colors.secondary, borderColor: sourceId === null ? colors.primary + "60" : "transparent" }]}
+                  onPress={() => setSourceId(null)}
+                >
+                  <Ionicons name="cash-outline" size={14} color={sourceId === null ? colors.primary : colors.mutedForeground} />
+                  <Text style={[s.payLabel, { color: sourceId === null ? colors.primary : colors.mutedForeground }]}>Cash</Text>
+                </TouchableOpacity>
+                {accounts.map((a) => {
+                  const sel = sourceId === a.id;
+                  return (
+                    <TouchableOpacity
+                      key={a.id}
+                      style={[s.payChip, { backgroundColor: sel ? colors.primary + "18" : colors.secondary, borderColor: sel ? colors.primary + "60" : "transparent" }]}
+                      onPress={() => setSourceId(a.id)}
+                    >
+                      <Ionicons name={a.icon as "card-outline"} size={14} color={sel ? colors.primary : colors.mutedForeground} />
+                      <Text style={[s.payLabel, { color: sel ? colors.primary : colors.mutedForeground }]}>{a.name}</Text>
+                      {sel && (
+                        <Text style={[s.payBalance, { color: colors.mutedForeground }]}>₹{a.balance.toFixed(0)}</Text>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </>
+          )}
+
+          <View style={s.optionsRow}>
+            <TouchableOpacity
+              style={[s.optionChip, { backgroundColor: isRecurring ? colors.primary + "18" : colors.secondary, borderColor: isRecurring ? colors.primary + "50" : "transparent" }]}
+              onPress={() => {
+                setIsRecurring(!isRecurring);
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              }}
+            >
+              <Ionicons name="repeat" size={14} color={isRecurring ? colors.primary : colors.mutedForeground} />
+              <Text style={[s.optionLabel, { color: isRecurring ? colors.primary : colors.mutedForeground }]}>Recurring</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={s.templateLink}
+              onPress={() => setShowSaveTemplate(!showSaveTemplate)}
+            >
+              <Ionicons name="bookmark-outline" size={13} color={colors.mutedForeground} />
+              <Text style={[s.templateLinkText, { color: colors.mutedForeground }]}>Save as template</Text>
             </TouchableOpacity>
           </View>
-        )}
+
+          {showSaveTemplate && (
+            <View style={[s.templateSaveRow, { backgroundColor: colors.secondary }]}>
+              <TextInput
+                style={[s.templateInput, { color: colors.foreground }]}
+                value={templateName}
+                onChangeText={setTemplateName}
+                placeholder="Template name"
+                placeholderTextColor={colors.mutedForeground + "80"}
+              />
+              <TouchableOpacity style={[s.templateSaveBtn, { backgroundColor: colors.primary }]} onPress={handleSaveTemplate}>
+                <Text style={[s.templateSaveBtnText, { color: colors.primaryForeground }]}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </ScrollView>
 
         <TouchableOpacity
-          style={[s.submitBtn, { backgroundColor: colors.primary }]}
+          style={[s.submitBtn, { backgroundColor: hasAmount ? colors.primary : colors.secondary, opacity: hasAmount ? 1 : 0.7 }]}
           onPress={handleSubmit}
+          activeOpacity={0.8}
         >
-          <Text style={[s.submitText, { color: colors.primaryForeground }]}>
-            {editExpense ? "Update" : "Add Expense"}
+          <Text style={[s.submitText, { color: hasAmount ? colors.primaryForeground : colors.mutedForeground }]}>
+            {editExpense ? "Update Expense" : "Add Expense"}
           </Text>
         </TouchableOpacity>
-      </View>
+      </Animated.View>
     </Modal>
   );
 }
 
-function createStyles(colors: ReturnType<typeof useColors>, insets: ReturnType<typeof useSafeAreaInsets>) {
-  return StyleSheet.create({
-    backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)" },
-    sheet: {
-      backgroundColor: colors.card,
-      borderTopLeftRadius: 24,
-      borderTopRightRadius: 24,
-      padding: 20,
-      paddingBottom: insets.bottom + 20,
-      gap: 14,
-    },
-    handle: {
-      width: 36, height: 4, backgroundColor: colors.border,
-      borderRadius: 2, alignSelf: "center", marginBottom: 4,
-    },
-    header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-    title: { fontSize: 18, fontFamily: "Inter_700Bold", color: colors.foreground },
-    templates: { flexGrow: 0 },
-    templateChip: {
-      backgroundColor: colors.secondary, borderRadius: 20,
-      paddingHorizontal: 14, paddingVertical: 6, marginRight: 8,
-    },
-    templateText: { color: colors.foreground, fontSize: 13, fontFamily: "Inter_500Medium" },
-    amountRow: { flexDirection: "row", alignItems: "center", gap: 4 },
-    currencySign: { fontSize: 32, fontFamily: "Inter_600SemiBold", color: colors.mutedForeground },
-    amountInput: { flex: 1, fontSize: 40, fontFamily: "Inter_700Bold", color: colors.foreground },
-    descInput: {
-      backgroundColor: colors.input, borderRadius: 12, padding: 14,
-      color: colors.foreground, fontFamily: "Inter_400Regular", fontSize: 15,
-    },
-    sectionLabel: {
-      color: colors.mutedForeground, fontSize: 12, fontFamily: "Inter_500Medium",
-      textTransform: "uppercase", letterSpacing: 0.8,
-    },
-    catScroll: { flexGrow: 0 },
-    catChip: {
-      flexDirection: "row", alignItems: "center", gap: 6,
-      paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20,
-      borderWidth: 1, borderColor: colors.border, marginRight: 8,
-    },
-    catDot: { width: 6, height: 6, borderRadius: 3 },
-    catLabel: { fontSize: 13, fontFamily: "Inter_500Medium" },
-    sourceChip: {
-      flexDirection: "row", alignItems: "center", gap: 6,
-      paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20,
-      borderWidth: 1, borderColor: colors.border, marginRight: 8,
-    },
-    sourceLabel: { fontSize: 13, fontFamily: "Inter_500Medium" },
-    sourceBalance: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
-    row: { flexDirection: "row", gap: 12 },
-    toggle: {
-      flexDirection: "row", alignItems: "center", gap: 6,
-      paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10,
-      borderWidth: 1, borderColor: colors.border,
-    },
-    toggleLabel: { fontSize: 13, fontFamily: "Inter_500Medium" },
-    tmplRow: { flexDirection: "row", gap: 8 },
-    tmplInput: {
-      flex: 1, backgroundColor: colors.input, borderRadius: 10,
-      padding: 12, color: colors.foreground, fontFamily: "Inter_400Regular",
-    },
-    tmplSave: {
-      backgroundColor: colors.accent, borderRadius: 10,
-      paddingHorizontal: 16, justifyContent: "center",
-    },
-    tmplSaveText: { fontFamily: "Inter_600SemiBold", fontSize: 14 },
-    submitBtn: { borderRadius: 14, padding: 16, alignItems: "center", marginTop: 4 },
-    submitText: { fontSize: 16, fontFamily: "Inter_700Bold" },
-  });
-}
+const s = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+  },
+  sheet: {
+    backgroundColor: "#111318",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingTop: 12,
+    maxHeight: "85%",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 20,
+  },
+  handle: {
+    width: 32,
+    height: 3,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: 16,
+  },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    marginBottom: 4,
+  },
+  title: {
+    fontSize: 17,
+    fontFamily: "Inter_600SemiBold",
+  },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 8,
+    gap: 16,
+  },
+  templateRow: {
+    flexGrow: 0,
+    marginBottom: -4,
+  },
+  templateChip: {
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    marginRight: 8,
+  },
+  templateText: {
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+  },
+  amountBlock: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 8,
+    gap: 2,
+  },
+  rupeeSign: {
+    fontSize: 36,
+    fontFamily: "Inter_600SemiBold",
+    marginTop: 4,
+  },
+  amountInput: {
+    fontSize: 64,
+    fontFamily: "Inter_700Bold",
+    minWidth: 80,
+    textAlign: "center",
+    letterSpacing: -2,
+    ...(Platform.OS === "web" ? {} : {}),
+  },
+  noteInput: {
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 15,
+    fontFamily: "Inter_400Regular",
+  },
+  sectionLabel: {
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginBottom: -4,
+  },
+  chipGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  catChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  catLabel: {
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+  },
+  hScroll: {
+    flexGrow: 0,
+    marginBottom: 4,
+  },
+  payChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginRight: 8,
+  },
+  payLabel: {
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+  },
+  payBalance: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    marginLeft: 2,
+  },
+  optionsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  optionChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  optionLabel: {
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+  },
+  templateLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingVertical: 8,
+  },
+  templateLinkText: {
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+  },
+  templateSaveRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 14,
+    overflow: "hidden",
+    gap: 0,
+  },
+  templateInput: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 14,
+    fontFamily: "Inter_400Regular",
+  },
+  templateSaveBtn: {
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+  },
+  templateSaveBtnText: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+  },
+  submitBtn: {
+    marginHorizontal: 20,
+    marginTop: 8,
+    borderRadius: 16,
+    paddingVertical: 17,
+    alignItems: "center",
+  },
+  submitText: {
+    fontSize: 16,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 0.2,
+  },
+});

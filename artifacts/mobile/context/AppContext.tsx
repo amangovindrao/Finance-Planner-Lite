@@ -165,6 +165,7 @@ const AS_KEYS = {
   notifPrefs: "@ft_notif_prefs",
   loans: "@ft_loans",
   privacyMode: "@ft_privacy_mode",
+  profilePhoto: "@ft_profile_photo",
 };
 
 function generateId(): string {
@@ -273,6 +274,7 @@ interface AppContextType {
   currentMonth: string;
   isLoaded: boolean;
   userName: string;
+  profilePhoto: string | null;
   isOnboarded: boolean;
   notificationPrefs: NotificationPrefs;
   isPrivacyMode: boolean;
@@ -306,6 +308,8 @@ interface AppContextType {
   completeOnboarding: (name: string, budget: number, initialAccounts: Omit<Account, "id">[]) => void;
   updateNotificationPrefs: (prefs: Partial<NotificationPrefs>) => void;
   togglePrivacyMode: () => void;
+  updateUserName: (name: string) => void;
+  updateProfilePhoto: (uri: string | null) => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -322,6 +326,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [isLocked, setIsLocked] = useState(false);
   const [streak, setStreak] = useState(0);
   const [userName, setUserName] = useState("");
+  const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
   const [isOnboarded, setIsOnboarded] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const [notificationPrefs, setNotificationPrefs] = useState<NotificationPrefs>(DEFAULT_NOTIFICATION_PREFS);
@@ -372,6 +377,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         : DEFAULT_NOTIFICATION_PREFS;
       const loadedLoans: Loan[] = map[AS_KEYS.loans] ? JSON.parse(map[AS_KEYS.loans]!) : [];
       const loadedPrivacyMode: boolean = map[AS_KEYS.privacyMode] === "true";
+      const loadedProfilePhoto: string | null = map[AS_KEYS.profilePhoto] ?? null;
 
       let updatedExpenses = [...loadedExpenses];
       if (lastMonth !== currentMonth) {
@@ -401,6 +407,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setIsLocked(!!loadedPin);
       setStreak(loadedStreak);
       setUserName(loadedUserName);
+      setProfilePhoto(loadedProfilePhoto);
       setIsOnboarded(loadedIsOnboarded);
       setNotificationPrefs(loadedNotifPrefs);
       notifPrefsRef.current = loadedNotifPrefs;
@@ -450,6 +457,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const loadedLoans = loanRows.map(rowToLoan);
       const privacyRow = db.getFirstSync<{ value: string }>("SELECT value FROM settings WHERE key = 'privacy_mode'");
       const loadedPrivacyMode = privacyRow?.value === "true";
+      const photoRow = db.getFirstSync<{ value: string }>("SELECT value FROM settings WHERE key = 'profile_photo'");
+      const loadedProfilePhoto: string | null = photoRow?.value ?? null;
 
       let updatedExpenses = [...loadedExpenses];
       if (lastMonth !== currentMonth) {
@@ -481,6 +490,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setIsLocked(!!loadedPin);
       setStreak(loadedStreak);
       setUserName(loadedUserName);
+      setProfilePhoto(loadedProfilePhoto);
       setIsOnboarded(loadedIsOnboarded);
       setNotificationPrefs(loadedNotifPrefs);
       notifPrefsRef.current = loadedNotifPrefs;
@@ -991,9 +1001,35 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const updateUserName = useCallback((name: string) => {
+    setUserName(name);
+    if (Platform.OS !== "web") {
+      dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES ('user_name', ?)", [name]);
+    } else {
+      AsyncStorage.setItem(AS_KEYS.userName, name);
+    }
+  }, []);
+
+  const updateProfilePhoto = useCallback((uri: string | null) => {
+    setProfilePhoto(uri);
+    if (Platform.OS !== "web") {
+      if (uri) {
+        dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES ('profile_photo', ?)", [uri]);
+      } else {
+        dbRun("DELETE FROM settings WHERE key = 'profile_photo'", []);
+      }
+    } else {
+      if (uri) {
+        AsyncStorage.setItem(AS_KEYS.profilePhoto, uri);
+      } else {
+        AsyncStorage.removeItem(AS_KEYS.profilePhoto);
+      }
+    }
+  }, []);
+
   const value: AppContextType = {
     expenses, budget, tasks, savingsGoals, templates, accounts, loans,
-    pin, isLocked, streak, currentMonth, isLoaded, userName, isOnboarded,
+    pin, isLocked, streak, currentMonth, isLoaded, userName, profilePhoto, isOnboarded,
     notificationPrefs, isPrivacyMode,
     addExpense, updateExpense, deleteExpense, updateBudget,
     addTask, updateTask, deleteTask,
@@ -1007,6 +1043,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     completeOnboarding,
     updateNotificationPrefs,
     togglePrivacyMode,
+    updateUserName,
+    updateProfilePhoto,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
