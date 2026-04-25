@@ -588,7 +588,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   function persistNotifiedThresholds(month: string, thresholds: Set<string>) {
     const data = JSON.stringify({ month, keys: Array.from(thresholds) });
-    if (Platform.OS !== "web") {
+    if (Platform.OS !== "web" && !isWebFallback()) {
       dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES ('notified_thresholds', ?)", [data]);
     } else {
       AsyncStorage.setItem(AS_KEYS.notifiedThresholds, data);
