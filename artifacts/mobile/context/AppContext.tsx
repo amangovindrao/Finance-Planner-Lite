@@ -166,6 +166,7 @@ const AS_KEYS = {
   loans: "@ft_loans",
   privacyMode: "@ft_privacy_mode",
   profilePhoto: "@ft_profile_photo",
+  notifiedThresholds: "@ft_notified_thresholds",
 };
 
 function generateId(): string {
@@ -378,6 +379,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const loadedLoans: Loan[] = map[AS_KEYS.loans] ? JSON.parse(map[AS_KEYS.loans]!) : [];
       const loadedPrivacyMode: boolean = map[AS_KEYS.privacyMode] === "true";
       const loadedProfilePhoto: string | null = map[AS_KEYS.profilePhoto] ?? null;
+      const rawNT = map[AS_KEYS.notifiedThresholds];
+      if (rawNT) {
+        try {
+          const parsed: { month: string; keys: string[] } = JSON.parse(rawNT);
+          if (parsed.month === currentMonth) {
+            notifiedThresholds.current = new Set(parsed.keys);
+          }
+        } catch { /* ignore */ }
+      }
 
       let updatedExpenses = [...loadedExpenses];
       if (lastMonth !== currentMonth) {
@@ -391,6 +401,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           }
         });
         await AsyncStorage.setItem(AS_KEYS.lastMonth, currentMonth);
+        await AsyncStorage.removeItem(AS_KEYS.notifiedThresholds);
+        notifiedThresholds.current = new Set();
         if (updatedExpenses.length !== loadedExpenses.length) {
           await AsyncStorage.setItem(AS_KEYS.expenses, JSON.stringify(updatedExpenses));
         }
@@ -459,6 +471,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const loadedPrivacyMode = privacyRow?.value === "true";
       const photoRow = db.getFirstSync<{ value: string }>("SELECT value FROM settings WHERE key = 'profile_photo'");
       const loadedProfilePhoto: string | null = photoRow?.value ?? null;
+      const ntRow = db.getFirstSync<{ value: string }>("SELECT value FROM settings WHERE key = 'notified_thresholds'");
+      if (ntRow?.value) {
+        try {
+          const parsed: { month: string; keys: string[] } = JSON.parse(ntRow.value);
+          if (parsed.month === currentMonth) {
+            notifiedThresholds.current = new Set(parsed.keys);
+          }
+        } catch { /* ignore */ }
+      }
 
       let updatedExpenses = [...loadedExpenses];
       if (lastMonth !== currentMonth) {
@@ -477,6 +498,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           }
         });
         db.runSync("INSERT OR REPLACE INTO settings (key, value) VALUES ('last_month', ?)", [currentMonth]);
+        db.runSync("DELETE FROM settings WHERE key = 'notified_thresholds'", []);
+        notifiedThresholds.current = new Set();
       }
 
       setExpenses(updatedExpenses);
@@ -563,6 +586,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return insights.slice(0, 3);
   }, [getTotalSpent, budget, getCategoryTotal, streak, accounts]);
 
+  function persistNotifiedThresholds(month: string, thresholds: Set<string>) {
+    const data = JSON.stringify({ month, keys: Array.from(thresholds) });
+    if (Platform.OS !== "web") {
+      dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES ('notified_thresholds', ?)", [data]);
+    } else {
+      AsyncStorage.setItem(AS_KEYS.notifiedThresholds, data);
+    }
+  }
+
   const addExpense = useCallback((e: Omit<Expense, "id">) => {
     const id = generateId();
     const newExpense: Expense = { ...e, id };
@@ -625,6 +657,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             `You've used 80% of your ₹${bud.totalAmount} monthly budget.`
           );
         }
+
+        persistNotifiedThresholds(month, notifiedThresholds.current);
       }
 
       return next;
