@@ -14,6 +14,8 @@ import { TaskForm } from "@/components/TaskForm";
 import { Task, useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
 
+const TASK_FILTER_CATEGORIES = ["All", "Bill Payment", "Subscription", "Split Expense", "Savings Transfer", "General"];
+
 export default function TasksScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -21,12 +23,14 @@ export default function TasksScreen() {
   const [showForm, setShowForm] = useState(false);
   const [editTask, setEditTask] = useState<Task | undefined>();
   const [showCompleted, setShowCompleted] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState("All");
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
 
   const { pending, completed } = useMemo(() => {
-    const sorted = [...tasks].sort((a, b) => {
+    const filtered = selectedCategory === "All" ? tasks : tasks.filter((t) => t.category === selectedCategory);
+    const sorted = [...filtered].sort((a, b) => {
       if (a.deadline && b.deadline) return a.deadline.localeCompare(b.deadline);
       if (a.deadline) return -1;
       if (b.deadline) return 1;
@@ -36,7 +40,7 @@ export default function TasksScreen() {
       pending: sorted.filter((t) => !t.completed),
       completed: sorted.filter((t) => t.completed),
     };
-  }, [tasks]);
+  }, [tasks, selectedCategory]);
 
   function toggleComplete(task: Task) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -51,8 +55,7 @@ export default function TasksScreen() {
   function getDaysUntil(deadline?: string): string | null {
     if (!deadline) return null;
     const diff = Math.ceil(
-      (new Date(deadline).getTime() - new Date().setHours(0, 0, 0, 0)) /
-        (1000 * 60 * 60 * 24)
+      (new Date(deadline).getTime() - new Date().setHours(0, 0, 0, 0)) / (1000 * 60 * 60 * 24)
     );
     if (diff < 0) return "Overdue";
     if (diff === 0) return "Today";
@@ -63,8 +66,7 @@ export default function TasksScreen() {
   function getDeadlineColor(deadline?: string): string {
     if (!deadline) return colors.mutedForeground;
     const diff = Math.ceil(
-      (new Date(deadline).getTime() - new Date().setHours(0, 0, 0, 0)) /
-        (1000 * 60 * 60 * 24)
+      (new Date(deadline).getTime() - new Date().setHours(0, 0, 0, 0)) / (1000 * 60 * 60 * 24)
     );
     if (diff < 0) return colors.destructive;
     if (diff <= 2) return "#FB923C";
@@ -87,6 +89,34 @@ export default function TasksScreen() {
       </View>
 
       <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.filterScroll}
+        contentContainerStyle={styles.filterContent}
+      >
+        {TASK_FILTER_CATEGORIES.map((cat) => (
+          <TouchableOpacity
+            key={cat}
+            style={[
+              styles.filterChip,
+              { borderColor: colors.border, backgroundColor: selectedCategory === cat ? colors.accent + "33" : "transparent" },
+              selectedCategory === cat && { borderColor: colors.accent },
+            ]}
+            onPress={() => setSelectedCategory(cat)}
+          >
+            <Text
+              style={[
+                styles.filterLabel,
+                { color: selectedCategory === cat ? colors.accent : colors.mutedForeground },
+              ]}
+            >
+              {cat}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: bottomPad + 90, paddingHorizontal: 16 }}
       >
@@ -95,7 +125,7 @@ export default function TasksScreen() {
             <Ionicons name="checkmark-circle-outline" size={40} color={colors.mutedForeground} />
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>All caught up</Text>
             <Text style={[styles.emptySubtitle, { color: colors.mutedForeground }]}>
-              Add finance reminders and tasks
+              {selectedCategory === "All" ? "Add finance reminders and tasks" : `No ${selectedCategory} tasks`}
             </Text>
           </View>
         ) : (
@@ -194,9 +224,7 @@ function TaskRow({
             },
           ]}
         >
-          {task.completed && (
-            <Ionicons name="checkmark" size={12} color={colors.primary} />
-          )}
+          {task.completed && <Ionicons name="checkmark" size={12} color={colors.primary} />}
         </View>
       </TouchableOpacity>
 
@@ -214,9 +242,7 @@ function TaskRow({
           {task.title}
         </Text>
         <View style={styles.taskMeta}>
-          <Text style={[styles.taskCategory, { color: colors.mutedForeground }]}>
-            {task.category}
-          </Text>
+          <Text style={[styles.taskCategory, { color: colors.mutedForeground }]}>{task.category}</Text>
           {daysLabel && (
             <Text style={[styles.taskDeadline, { color: deadlineColor }]}>{daysLabel}</Text>
           )}
@@ -250,6 +276,15 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 26, fontFamily: "Inter_700Bold" },
   addBtn: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  filterScroll: { flexGrow: 0, marginBottom: 4 },
+  filterContent: { paddingHorizontal: 16, gap: 8 },
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  filterLabel: { fontSize: 12, fontFamily: "Inter_500Medium" },
   section: { marginTop: 16 },
   sectionLabel: { fontSize: 11, fontFamily: "Inter_600SemiBold", letterSpacing: 1, marginBottom: 8 },
   completedToggle: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },

@@ -6,9 +6,20 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import { Platform, Share } from "react-native";
+import {
+  DbBudget,
+  DbExpense,
+  DbSavingsGoal,
+  DbTask,
+  DbTemplate,
+  getDb,
+  initDatabase,
+  isWebFallback,
+} from "@/db/database";
 
 export type Category =
   | "Food"
@@ -75,18 +86,6 @@ export interface Template {
   category: Category;
 }
 
-const KEYS = {
-  expenses: "@ft_expenses",
-  budget: "@ft_budget",
-  tasks: "@ft_tasks",
-  goals: "@ft_goals",
-  templates: "@ft_templates",
-  pin: "@ft_pin",
-  streak: "@ft_streak",
-  streakDate: "@ft_streak_date",
-  lastMonth: "@ft_last_month",
-};
-
 const DEFAULT_BUDGET: Budget = {
   totalAmount: 1500,
   categoryLimits: {
@@ -97,6 +96,17 @@ const DEFAULT_BUDGET: Budget = {
     Education: 250,
     Miscellaneous: 300,
   },
+};
+
+const AS_KEYS = {
+  expenses: "@ft_expenses",
+  budget: "@ft_budget",
+  tasks: "@ft_tasks",
+  goals: "@ft_goals",
+  templates: "@ft_templates",
+  pin: "@ft_pin",
+  streak: "@ft_streak",
+  lastMonth: "@ft_last_month",
 };
 
 function generateId(): string {
@@ -116,6 +126,55 @@ export function autoCategorize(description: string): Category {
   if (/textbook|course|tuition|school|university|books|study|class|education|learning|exam/.test(t))
     return "Education";
   return "Miscellaneous";
+}
+
+function rowToExpense(row: DbExpense): Expense {
+  return {
+    id: row.id,
+    amount: row.amount,
+    category: row.category as Category,
+    description: row.description,
+    date: row.date,
+    isRecurring: row.is_recurring === 1,
+  };
+}
+
+function rowToTask(row: DbTask): Task {
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    deadline: row.deadline ?? undefined,
+    completed: row.completed === 1,
+    category: row.category,
+    createdAt: row.created_at,
+  };
+}
+
+function rowToGoal(row: DbSavingsGoal): SavingsGoal {
+  return {
+    id: row.id,
+    name: row.name,
+    targetAmount: row.target_amount,
+    currentAmount: row.current_amount,
+    deadline: row.deadline ?? undefined,
+  };
+}
+
+function rowToTemplate(row: DbTemplate): Template {
+  return {
+    id: row.id,
+    name: row.name,
+    amount: row.amount,
+    category: row.category as Category,
+  };
+}
+
+function parseBudget(row: DbBudget): Budget {
+  return {
+    totalAmount: row.total_amount,
+    categoryLimits: JSON.parse(row.category_limits) as Record<Category, number>,
+  };
 }
 
 interface AppContextType {
@@ -163,19 +222,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [streak, setStreak] = useState(0);
   const [isLoaded, setIsLoaded] = useState(false);
   const currentMonth = new Date().toISOString().slice(0, 7);
+  const initialized = useRef(false);
 
   useEffect(() => {
-    loadAll();
+    if (initialized.current) return;
+    initialized.current = true;
+    if (Platform.OS === "web") {
+      loadFromAsyncStorage();
+    } else {
+      loadFromSQLite();
+    }
   }, []);
 
-  async function loadAll() {
+  async function loadFromAsyncStorage() {
     try {
       const [expRaw, budRaw, tasksRaw, goalsRaw, tmplRaw, pinRaw, streakRaw, lastMonthRaw] =
-        await AsyncStorage.multiGet([
-          KEYS.expenses, KEYS.budget, KEYS.tasks, KEYS.goals,
-          KEYS.templates, KEYS.pin, KEYS.streak, KEYS.lastMonth,
-        ]);
-
+        await AsyncStorage.multiGet(Object.values(AS_KEYS));
       const loadedExpenses: Expense[] = expRaw[1] ? JSON.parse(expRaw[1]) : [];
       const loadedBudget: Budget = budRaw[1] ? JSON.parse(budRaw[1]) : DEFAULT_BUDGET;
       const loadedTasks: Task[] = tasksRaw[1] ? JSON.parse(tasksRaw[1]) : [];
@@ -185,28 +247,79 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const loadedStreak: number = streakRaw[1] ? parseInt(streakRaw[1]) : 0;
       const lastMonth: string = lastMonthRaw[1] ?? "";
 
-      // Auto-add recurring expenses for new month
       let updatedExpenses = [...loadedExpenses];
       if (lastMonth !== currentMonth) {
-        const recurringExpenses = loadedExpenses.filter((e) => e.isRecurring);
-        const thisMonthIds = new Set(
-          loadedExpenses
-            .filter((e) => e.date.startsWith(currentMonth))
-            .map((e) => e.description.toLowerCase())
+        const recurring = loadedExpenses.filter((e) => e.isRecurring);
+        const thisMonthDescs = new Set(
+          loadedExpenses.filter((e) => e.date.startsWith(currentMonth)).map((e) => e.description.toLowerCase())
         );
-        recurringExpenses.forEach((e) => {
-          if (!thisMonthIds.has(e.description.toLowerCase())) {
-            updatedExpenses.push({
-              ...e,
-              id: generateId(),
-              date: `${currentMonth}-01`,
-            });
+        recurring.forEach((e) => {
+          if (!thisMonthDescs.has(e.description.toLowerCase())) {
+            updatedExpenses.push({ ...e, id: generateId(), date: `${currentMonth}-01` });
           }
         });
-        await AsyncStorage.setItem(KEYS.lastMonth, currentMonth);
+        await AsyncStorage.setItem(AS_KEYS.lastMonth, currentMonth);
         if (updatedExpenses.length !== loadedExpenses.length) {
-          await AsyncStorage.setItem(KEYS.expenses, JSON.stringify(updatedExpenses));
+          await AsyncStorage.setItem(AS_KEYS.expenses, JSON.stringify(updatedExpenses));
         }
+      }
+      setExpenses(updatedExpenses);
+      setBudget(loadedBudget);
+      setTasks(loadedTasks);
+      setSavingsGoals(loadedGoals);
+      setTemplates(loadedTemplates);
+      setPin_(loadedPin);
+      setIsLocked(!!loadedPin);
+      setStreak(loadedStreak);
+    } catch (err) {
+      console.warn("AS load error:", err);
+    } finally {
+      setIsLoaded(true);
+    }
+  }
+
+  function loadFromSQLite() {
+    try {
+      initDatabase();
+      if (isWebFallback()) {
+        loadFromAsyncStorage();
+        return;
+      }
+      const db = getDb();
+      const expRows = db.getAllSync<DbExpense>("SELECT * FROM expenses ORDER BY date DESC");
+      const loadedExpenses = expRows.map(rowToExpense);
+      const budRow = db.getFirstSync<DbBudget>("SELECT * FROM budgets WHERE id = 1");
+      const loadedBudget = budRow ? parseBudget(budRow) : DEFAULT_BUDGET;
+      const taskRows = db.getAllSync<DbTask>("SELECT * FROM tasks ORDER BY created_at DESC");
+      const loadedTasks = taskRows.map(rowToTask);
+      const goalRows = db.getAllSync<DbSavingsGoal>("SELECT * FROM savings_goals");
+      const loadedGoals = goalRows.map(rowToGoal);
+      const tmplRows = db.getAllSync<DbTemplate>("SELECT * FROM templates");
+      const loadedTemplates = tmplRows.map(rowToTemplate);
+      const pinRow = db.getFirstSync<{ value: string }>("SELECT value FROM settings WHERE key = 'pin'");
+      const loadedPin = pinRow?.value ?? null;
+      const streakRow = db.getFirstSync<{ value: string }>("SELECT value FROM settings WHERE key = 'streak'");
+      const loadedStreak = streakRow ? parseInt(streakRow.value) : 0;
+      const lastMonthRow = db.getFirstSync<{ value: string }>("SELECT value FROM settings WHERE key = 'last_month'");
+      const lastMonth = lastMonthRow?.value ?? "";
+
+      let updatedExpenses = [...loadedExpenses];
+      if (lastMonth !== currentMonth) {
+        const recurring = loadedExpenses.filter((e) => e.isRecurring);
+        const thisMonthDescs = new Set(
+          loadedExpenses.filter((e) => e.date.startsWith(currentMonth)).map((e) => e.description.toLowerCase())
+        );
+        recurring.forEach((e) => {
+          if (!thisMonthDescs.has(e.description.toLowerCase())) {
+            const newExp: Expense = { ...e, id: generateId(), date: `${currentMonth}-01` };
+            db.runSync(
+              "INSERT INTO expenses (id, amount, category, description, date, is_recurring) VALUES (?, ?, ?, ?, ?, ?)",
+              [newExp.id, newExp.amount, newExp.category, newExp.description, newExp.date, 1]
+            );
+            updatedExpenses.push(newExp);
+          }
+        });
+        db.runSync("INSERT OR REPLACE INTO settings (key, value) VALUES ('last_month', ?)", [currentMonth]);
       }
 
       setExpenses(updatedExpenses);
@@ -217,28 +330,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setPin_(loadedPin);
       setIsLocked(!!loadedPin);
       setStreak(loadedStreak);
-    } catch (_) {
-      // ignore storage errors
+    } catch (err) {
+      console.warn("SQLite load error:", err);
+      loadFromAsyncStorage();
     } finally {
       setIsLoaded(true);
     }
   }
 
-  const saveExpenses = useCallback(async (data: Expense[]) => {
-    await AsyncStorage.setItem(KEYS.expenses, JSON.stringify(data));
-  }, []);
+  function dbRun(sql: string, args: (string | number | null)[]) {
+    if (Platform.OS === "web" || isWebFallback()) return;
+    try { getDb().runSync(sql, args); } catch (err) { console.warn("DB run error:", err); }
+  }
 
-  const saveTasks = useCallback(async (data: Task[]) => {
-    await AsyncStorage.setItem(KEYS.tasks, JSON.stringify(data));
-  }, []);
-
-  const saveGoals = useCallback(async (data: SavingsGoal[]) => {
-    await AsyncStorage.setItem(KEYS.goals, JSON.stringify(data));
-  }, []);
-
-  const saveTemplates = useCallback(async (data: Template[]) => {
-    await AsyncStorage.setItem(KEYS.templates, JSON.stringify(data));
-  }, []);
+  async function asSet(key: keyof typeof AS_KEYS, value: unknown) {
+    if (Platform.OS !== "web") return;
+    await AsyncStorage.setItem(AS_KEYS[key], JSON.stringify(value));
+  }
 
   const getMonthExpenses = useCallback((): Expense[] => {
     return expenses.filter((e) => e.date.startsWith(currentMonth));
@@ -246,156 +354,199 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const getCategoryTotal = useCallback(
     (category: Category): number => {
-      return getMonthExpenses()
-        .filter((e) => e.category === category)
-        .reduce((sum, e) => sum + e.amount, 0);
+      return getMonthExpenses().filter((e) => e.category === category).reduce((s, e) => s + e.amount, 0);
     },
     [getMonthExpenses]
   );
 
   const getTotalSpent = useCallback((): number => {
-    return getMonthExpenses().reduce((sum, e) => sum + e.amount, 0);
+    return getMonthExpenses().reduce((s, e) => s + e.amount, 0);
   }, [getMonthExpenses]);
 
   const getInsights = useCallback((): string[] => {
     const insights: string[] = [];
-    const monthExpenses = getMonthExpenses();
-    const totalSpent = monthExpenses.reduce((s, e) => s + e.amount, 0);
-    const remaining = budget.totalAmount - totalSpent;
-    const pct = budget.totalAmount > 0 ? (totalSpent / budget.totalAmount) * 100 : 0;
+    const total = getTotalSpent();
+    const pct = budget.totalAmount > 0 ? (total / budget.totalAmount) * 100 : 0;
+    const remaining = budget.totalAmount - total;
 
-    if (pct > 90) insights.push("You are close to your monthly budget limit.");
+    if (pct > 90) insights.push("Close to your monthly budget limit.");
     else if (pct < 50) insights.push(`On track — only ${Math.round(pct)}% of budget used.`);
 
     CATEGORIES.forEach((cat) => {
       const spent = getCategoryTotal(cat);
       const limit = budget.categoryLimits[cat];
-      if (limit > 0 && spent > limit) {
-        insights.push(`${cat} exceeded by $${(spent - limit).toFixed(0)}.`);
-      }
+      if (limit > 0 && spent > limit) insights.push(`${cat} exceeded by $${(spent - limit).toFixed(0)}.`);
     });
 
     if (streak >= 3) insights.push(`${streak}-day spending streak — keep it up!`);
-    if (remaining > 0 && pct <= 80)
-      insights.push(`$${remaining.toFixed(0)} remaining this month.`);
+    if (remaining > 0 && pct <= 80) insights.push(`$${remaining.toFixed(0)} remaining this month.`);
 
     return insights.slice(0, 3);
-  }, [getMonthExpenses, budget, getCategoryTotal, streak]);
+  }, [getTotalSpent, budget, getCategoryTotal, streak]);
 
-  const addExpense = useCallback(
-    (e: Omit<Expense, "id">) => {
-      const next = [...expenses, { ...e, id: generateId() }];
-      setExpenses(next);
-      saveExpenses(next);
-    },
-    [expenses, saveExpenses]
-  );
+  const addExpense = useCallback((e: Omit<Expense, "id">) => {
+    const id = generateId();
+    const newExpense = { ...e, id };
+    dbRun(
+      "INSERT INTO expenses (id, amount, category, description, date, is_recurring) VALUES (?, ?, ?, ?, ?, ?)",
+      [id, e.amount, e.category, e.description, e.date, e.isRecurring ? 1 : 0]
+    );
+    setExpenses((prev) => {
+      const next = [newExpense, ...prev];
+      asSet("expenses", next);
+      return next;
+    });
+  }, []);
 
-  const updateExpense = useCallback(
-    (id: string, u: Partial<Expense>) => {
-      const next = expenses.map((e) => (e.id === id ? { ...e, ...u } : e));
-      setExpenses(next);
-      saveExpenses(next);
-    },
-    [expenses, saveExpenses]
-  );
+  const updateExpense = useCallback((id: string, u: Partial<Expense>) => {
+    setExpenses((prev) => {
+      const updated = prev.map((e) => (e.id === id ? { ...e, ...u } : e));
+      const exp = updated.find((e) => e.id === id);
+      if (exp) {
+        dbRun(
+          "UPDATE expenses SET amount=?, category=?, description=?, date=?, is_recurring=? WHERE id=?",
+          [exp.amount, exp.category, exp.description, exp.date, exp.isRecurring ? 1 : 0, id]
+        );
+        asSet("expenses", updated);
+      }
+      return updated;
+    });
+  }, []);
 
-  const deleteExpense = useCallback(
-    (id: string) => {
-      const next = expenses.filter((e) => e.id !== id);
-      setExpenses(next);
-      saveExpenses(next);
-    },
-    [expenses, saveExpenses]
-  );
+  const deleteExpense = useCallback((id: string) => {
+    dbRun("DELETE FROM expenses WHERE id=?", [id]);
+    setExpenses((prev) => {
+      const next = prev.filter((e) => e.id !== id);
+      asSet("expenses", next);
+      return next;
+    });
+  }, []);
 
-  const updateBudget = useCallback(
-    (b: Partial<Budget>) => {
-      const next = { ...budget, ...b };
-      setBudget(next);
-      AsyncStorage.setItem(KEYS.budget, JSON.stringify(next));
-    },
-    [budget]
-  );
+  const updateBudget = useCallback((b: Partial<Budget>) => {
+    setBudget((prev) => {
+      const next = { ...prev, ...b };
+      dbRun("UPDATE budgets SET total_amount=?, category_limits=? WHERE id=1", [
+        next.totalAmount, JSON.stringify(next.categoryLimits),
+      ]);
+      asSet("budget", next);
+      return next;
+    });
+  }, []);
 
-  const addTask = useCallback(
-    (t: Omit<Task, "id" | "createdAt">) => {
-      const next = [...tasks, { ...t, id: generateId(), createdAt: new Date().toISOString() }];
-      setTasks(next);
-      saveTasks(next);
-    },
-    [tasks, saveTasks]
-  );
+  const addTask = useCallback((t: Omit<Task, "id" | "createdAt">) => {
+    const id = generateId();
+    const createdAt = new Date().toISOString();
+    const newTask: Task = { ...t, id, createdAt, completed: false };
+    dbRun(
+      "INSERT INTO tasks (id, title, description, deadline, completed, category, created_at) VALUES (?, ?, ?, ?, 0, ?, ?)",
+      [id, t.title, t.description, t.deadline ?? null, t.category, createdAt]
+    );
+    setTasks((prev) => {
+      const next = [newTask, ...prev];
+      asSet("tasks", next);
+      return next;
+    });
+  }, []);
 
-  const updateTask = useCallback(
-    (id: string, u: Partial<Task>) => {
-      const next = tasks.map((t) => (t.id === id ? { ...t, ...u } : t));
-      setTasks(next);
-      saveTasks(next);
-    },
-    [tasks, saveTasks]
-  );
+  const updateTask = useCallback((id: string, u: Partial<Task>) => {
+    setTasks((prev) => {
+      const updated = prev.map((t) => (t.id === id ? { ...t, ...u } : t));
+      const task = updated.find((t) => t.id === id);
+      if (task) {
+        dbRun(
+          "UPDATE tasks SET title=?, description=?, deadline=?, completed=?, category=? WHERE id=?",
+          [task.title, task.description, task.deadline ?? null, task.completed ? 1 : 0, task.category, id]
+        );
+        asSet("tasks", updated);
+      }
+      return updated;
+    });
+  }, []);
 
-  const deleteTask = useCallback(
-    (id: string) => {
-      const next = tasks.filter((t) => t.id !== id);
-      setTasks(next);
-      saveTasks(next);
-    },
-    [tasks, saveTasks]
-  );
+  const deleteTask = useCallback((id: string) => {
+    dbRun("DELETE FROM tasks WHERE id=?", [id]);
+    setTasks((prev) => {
+      const next = prev.filter((t) => t.id !== id);
+      asSet("tasks", next);
+      return next;
+    });
+  }, []);
 
-  const addSavingsGoal = useCallback(
-    (g: Omit<SavingsGoal, "id">) => {
-      const next = [...savingsGoals, { ...g, id: generateId() }];
-      setSavingsGoals(next);
-      saveGoals(next);
-    },
-    [savingsGoals, saveGoals]
-  );
+  const addSavingsGoal = useCallback((g: Omit<SavingsGoal, "id">) => {
+    const id = generateId();
+    const newGoal = { ...g, id };
+    dbRun(
+      "INSERT INTO savings_goals (id, name, target_amount, current_amount, deadline) VALUES (?, ?, ?, ?, ?)",
+      [id, g.name, g.targetAmount, g.currentAmount, g.deadline ?? null]
+    );
+    setSavingsGoals((prev) => {
+      const next = [...prev, newGoal];
+      asSet("goals", next);
+      return next;
+    });
+  }, []);
 
-  const updateSavingsGoal = useCallback(
-    (id: string, u: Partial<SavingsGoal>) => {
-      const next = savingsGoals.map((g) => (g.id === id ? { ...g, ...u } : g));
-      setSavingsGoals(next);
-      saveGoals(next);
-    },
-    [savingsGoals, saveGoals]
-  );
+  const updateSavingsGoal = useCallback((id: string, u: Partial<SavingsGoal>) => {
+    setSavingsGoals((prev) => {
+      const updated = prev.map((g) => (g.id === id ? { ...g, ...u } : g));
+      const goal = updated.find((g) => g.id === id);
+      if (goal) {
+        dbRun(
+          "UPDATE savings_goals SET name=?, target_amount=?, current_amount=?, deadline=? WHERE id=?",
+          [goal.name, goal.targetAmount, goal.currentAmount, goal.deadline ?? null, id]
+        );
+        asSet("goals", updated);
+      }
+      return updated;
+    });
+  }, []);
 
-  const deleteSavingsGoal = useCallback(
-    (id: string) => {
-      const next = savingsGoals.filter((g) => g.id !== id);
-      setSavingsGoals(next);
-      saveGoals(next);
-    },
-    [savingsGoals, saveGoals]
-  );
+  const deleteSavingsGoal = useCallback((id: string) => {
+    dbRun("DELETE FROM savings_goals WHERE id=?", [id]);
+    setSavingsGoals((prev) => {
+      const next = prev.filter((g) => g.id !== id);
+      asSet("goals", next);
+      return next;
+    });
+  }, []);
 
-  const addTemplate = useCallback(
-    (t: Omit<Template, "id">) => {
-      const next = [...templates, { ...t, id: generateId() }];
-      setTemplates(next);
-      saveTemplates(next);
-    },
-    [templates, saveTemplates]
-  );
+  const addTemplate = useCallback((t: Omit<Template, "id">) => {
+    const id = generateId();
+    const newTemplate = { ...t, id };
+    dbRun(
+      "INSERT INTO templates (id, name, amount, category) VALUES (?, ?, ?, ?)",
+      [id, t.name, t.amount, t.category]
+    );
+    setTemplates((prev) => {
+      const next = [...prev, newTemplate];
+      asSet("templates", next);
+      return next;
+    });
+  }, []);
 
-  const deleteTemplate = useCallback(
-    (id: string) => {
-      const next = templates.filter((t) => t.id !== id);
-      setTemplates(next);
-      saveTemplates(next);
-    },
-    [templates, saveTemplates]
-  );
+  const deleteTemplate = useCallback((id: string) => {
+    dbRun("DELETE FROM templates WHERE id=?", [id]);
+    setTemplates((prev) => {
+      const next = prev.filter((t) => t.id !== id);
+      asSet("templates", next);
+      return next;
+    });
+  }, []);
 
   const setPin = useCallback((p: string | null) => {
     setPin_(p);
-    if (p) {
-      AsyncStorage.setItem(KEYS.pin, p);
+    if (Platform.OS !== "web") {
+      if (p) {
+        dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES ('pin', ?)", [p]);
+      } else {
+        dbRun("DELETE FROM settings WHERE key='pin'", []);
+      }
     } else {
-      AsyncStorage.removeItem(KEYS.pin);
+      if (p) {
+        AsyncStorage.setItem(AS_KEYS.pin, p);
+      } else {
+        AsyncStorage.removeItem(AS_KEYS.pin);
+      }
     }
   }, []);
 
@@ -427,7 +578,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           return;
         }
       } catch (_) {
-        // fall through to Share.share
+        // fall through
       }
     }
     Share.share({ message: csv, title: "Finance Export" });

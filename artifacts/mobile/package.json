@@ -57,6 +57,8 @@
   },
   "dependencies": {
     "expo-file-system": "^19.0.21",
-    "expo-sharing": "^14.0.8"
+    "expo-sharing": "^14.0.8",
+    "expo-sqlite": "~16.0.10",
+    "react-native-chart-kit": "^6.12.0"
   }
 }

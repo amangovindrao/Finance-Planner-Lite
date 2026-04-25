@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import {
   DimensionValue,
+  Dimensions,
   Platform,
   ScrollView,
   StyleSheet,
@@ -9,11 +10,13 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { BarChartView, PieChartView } from "@/components/Charts";
+import { BarChart, PieChart } from "react-native-chart-kit";
 import { CATEGORIES, CATEGORY_COLORS, Category, useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
 
 type Period = "week" | "month";
+
+const SCREEN_WIDTH = Dimensions.get("window").width;
 
 export default function AnalyticsScreen() {
   const colors = useColors();
@@ -34,7 +37,7 @@ export default function AnalyticsScreen() {
     return expenses.filter((e) => new Date(e.date) >= weekAgo);
   }, [expenses, period, currentMonth]);
 
-  const categoryData = useMemo((): Record<Category, number> => {
+  const categoryTotals = useMemo((): Record<Category, number> => {
     const d: Record<Category, number> = {
       Food: 0, Transport: 0, Subscriptions: 0,
       Shopping: 0, Education: 0, Miscellaneous: 0,
@@ -42,6 +45,18 @@ export default function AnalyticsScreen() {
     filteredExpenses.forEach((e) => { d[e.category] += e.amount; });
     return d;
   }, [filteredExpenses]);
+
+  const pieData = useMemo(() => {
+    return CATEGORIES
+      .filter((c) => categoryTotals[c] > 0)
+      .map((c) => ({
+        name: c,
+        population: categoryTotals[c],
+        color: CATEGORY_COLORS[c],
+        legendFontColor: colors.mutedForeground,
+        legendFontSize: 12,
+      }));
+  }, [categoryTotals, colors]);
 
   const weeklyBarData = useMemo(() => {
     const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -56,8 +71,23 @@ export default function AnalyticsScreen() {
         totals[label] = (totals[label] ?? 0) + e.amount;
       }
     });
-    return days.map((d) => ({ label: d.slice(0, 1), value: totals[d] }));
+    return {
+      labels: days.map((d) => d.slice(0, 1)),
+      datasets: [{ data: days.map((d) => totals[d] || 0) }],
+    };
   }, [expenses]);
+
+  const chartConfig = {
+    backgroundColor: colors.card,
+    backgroundGradientFrom: colors.card,
+    backgroundGradientTo: colors.card,
+    decimalPlaces: 0,
+    color: (opacity = 1) => `${colors.primary}${Math.round(opacity * 255).toString(16).padStart(2, "0")}`,
+    labelColor: () => colors.mutedForeground,
+    barPercentage: 0.6,
+    propsForBackgroundLines: { stroke: colors.border, strokeWidth: 1 },
+    style: { borderRadius: 12 },
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -86,22 +116,53 @@ export default function AnalyticsScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: bottomPad + 90, paddingHorizontal: 16, gap: 20 }}
       >
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <Text style={[styles.cardTitle, { color: colors.foreground }]}>Category Breakdown</Text>
-          <PieChartView data={categoryData} />
-        </View>
+        {pieData.length > 0 && (
+          <View style={[styles.card, { backgroundColor: colors.card }]}>
+            <Text style={[styles.cardTitle, { color: colors.foreground }]}>Category Breakdown</Text>
+            <PieChart
+              data={pieData}
+              width={SCREEN_WIDTH - 64}
+              height={180}
+              chartConfig={chartConfig}
+              accessor="population"
+              backgroundColor="transparent"
+              paddingLeft="12"
+              hasLegend
+            />
+          </View>
+        )}
+
+        {pieData.length === 0 && (
+          <View style={[styles.card, { backgroundColor: colors.card }]}>
+            <Text style={[styles.cardTitle, { color: colors.foreground }]}>Category Breakdown</Text>
+            <View style={[styles.emptyChart, { borderColor: colors.border }]}>
+              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>No expenses this period</Text>
+            </View>
+          </View>
+        )}
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <Text style={[styles.cardTitle, { color: colors.foreground }]}>Weekly Spending</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <BarChartView data={weeklyBarData} barColor={colors.primary} />
+            <BarChart
+              data={weeklyBarData}
+              width={Math.max(SCREEN_WIDTH - 64, weeklyBarData.labels.length * 60)}
+              height={160}
+              chartConfig={chartConfig}
+              style={{ borderRadius: 12 }}
+              showValuesOnTopOfBars={false}
+              withInnerLines
+              fromZero
+              yAxisLabel="$"
+              yAxisSuffix=""
+            />
           </ScrollView>
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <Text style={[styles.cardTitle, { color: colors.foreground }]}>Budget vs Actual</Text>
           {CATEGORIES.map((cat) => {
-            const spent = categoryData[cat];
+            const spent = categoryTotals[cat];
             const limit = budget.categoryLimits[cat];
             if (limit === 0 && spent === 0) return null;
             const isOver = spent > limit && limit > 0;
@@ -111,13 +172,9 @@ export default function AnalyticsScreen() {
                 <View style={styles.budgetMeta}>
                   <View style={[styles.dot, { backgroundColor: CATEGORY_COLORS[cat] }]} />
                   <Text style={[styles.budgetCat, { color: colors.foreground }]}>{cat}</Text>
-                  <Text
-                    style={[styles.budgetSpent, { color: isOver ? colors.destructive : colors.foreground }]}
-                  >
+                  <Text style={[styles.budgetSpent, { color: isOver ? colors.destructive : colors.foreground }]}>
                     ${spent.toFixed(0)}
-                    {limit > 0 && (
-                      <Text style={{ color: colors.mutedForeground }}>/{limit}</Text>
-                    )}
+                    {limit > 0 && <Text style={{ color: colors.mutedForeground }}>/{limit}</Text>}
                   </Text>
                 </View>
                 <View style={[styles.bar, { backgroundColor: colors.muted }]}>
@@ -167,19 +224,16 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   title: { fontSize: 26, fontFamily: "Inter_700Bold" },
-  toggle: {
-    flexDirection: "row",
-    borderRadius: 10,
-    padding: 3,
-  },
+  toggle: { flexDirection: "row", borderRadius: 10, padding: 3 },
   toggleBtn: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8 },
   toggleLabel: { fontSize: 13, fontFamily: "Inter_500Medium" },
-  card: {
-    borderRadius: 20,
-    padding: 18,
-    gap: 14,
-  },
+  card: { borderRadius: 20, padding: 18, gap: 14 },
   cardTitle: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
+  emptyChart: {
+    height: 120, borderWidth: 1, borderStyle: "dashed", borderRadius: 12,
+    alignItems: "center", justifyContent: "center",
+  },
+  emptyText: { fontSize: 14, fontFamily: "Inter_400Regular" },
   budgetRow: { gap: 6 },
   budgetMeta: { flexDirection: "row", alignItems: "center", gap: 8 },
   dot: { width: 8, height: 8, borderRadius: 4 },
@@ -189,17 +243,9 @@ const styles = StyleSheet.create({
   barFill: { height: 6, borderRadius: 3 },
   overText: { fontSize: 11, fontFamily: "Inter_400Regular" },
   insightRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    gap: 10,
+    flexDirection: "row", alignItems: "flex-start",
+    paddingVertical: 10, borderBottomWidth: 1, gap: 10,
   },
-  insightBullet: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginTop: 5,
-  },
+  insightBullet: { width: 6, height: 6, borderRadius: 3, marginTop: 5 },
   insightText: { flex: 1, fontSize: 14, fontFamily: "Inter_400Regular" },
 });
