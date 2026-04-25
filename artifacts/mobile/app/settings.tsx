@@ -437,7 +437,9 @@ export default function SettingsScreen() {
             </View>
             <View style={s.rowInfo}>
               <Text style={s.rowTitle}>Budget Alerts</Text>
-              <Text style={s.rowSub}>Alert at 80% and 100% of budget limits</Text>
+              <Text style={s.rowSub}>
+                Alert at {notificationPrefs.warningThreshold ?? 80}% and 100% of budget limits
+              </Text>
             </View>
             <Switch
               value={notificationPrefs.budgetAlerts}
@@ -449,6 +451,54 @@ export default function SettingsScreen() {
               thumbColor={notificationPrefs.budgetAlerts ? colors.primary : colors.mutedForeground}
             />
           </View>
+          {notificationPrefs.budgetAlerts && (
+            <View style={[s.row, { justifyContent: "space-between" }]}>
+              <View style={s.rowIcon}>
+                <Ionicons name="speedometer-outline" size={18} color={colors.primary} />
+              </View>
+              <View style={s.rowInfo}>
+                <Text style={s.rowTitle}>Warning Threshold</Text>
+                <Text style={s.rowSub}>Send early warning at this percentage</Text>
+              </View>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <TouchableOpacity
+                  onPress={() => {
+                    const cur = notificationPrefs.warningThreshold ?? 80;
+                    if (cur > 50) {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      updateNotificationPrefs({ warningThreshold: cur - 5 });
+                    }
+                  }}
+                  style={{
+                    width: 30, height: 30, borderRadius: 15,
+                    backgroundColor: colors.secondary,
+                    alignItems: "center", justifyContent: "center",
+                  }}
+                >
+                  <Ionicons name="remove" size={16} color={colors.foreground} />
+                </TouchableOpacity>
+                <Text style={{ fontSize: 15, fontFamily: "Inter_600SemiBold", color: colors.foreground, minWidth: 38, textAlign: "center" }}>
+                  {notificationPrefs.warningThreshold ?? 80}%
+                </Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    const cur = notificationPrefs.warningThreshold ?? 80;
+                    if (cur < 95) {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      updateNotificationPrefs({ warningThreshold: cur + 5 });
+                    }
+                  }}
+                  style={{
+                    width: 30, height: 30, borderRadius: 15,
+                    backgroundColor: colors.secondary,
+                    alignItems: "center", justifyContent: "center",
+                  }}
+                >
+                  <Ionicons name="add" size={16} color={colors.foreground} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
           <View style={s.row}>
             <View style={s.rowIcon}>
               <Ionicons name="alarm-outline" size={18} color={colors.accent} />

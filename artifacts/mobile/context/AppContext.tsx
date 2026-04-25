@@ -131,11 +131,13 @@ export interface Loan {
 export interface NotificationPrefs {
   budgetAlerts: boolean;
   taskReminders: boolean;
+  warningThreshold: number;
 }
 
 const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
   budgetAlerts: true,
   taskReminders: true,
+  warningThreshold: 80,
 };
 
 const DEFAULT_BUDGET: Budget = {
@@ -642,6 +644,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (notifPrefsRef.current.budgetAlerts) {
         const month = new Date().toISOString().slice(0, 7);
         const monthExp = next.filter((exp) => exp.date.startsWith(month));
+        const warnPct = notifPrefsRef.current.warningThreshold ?? 80;
+        const warnKey = warnPct.toString();
 
         const bud = budgetRef.current;
         const catTotal = monthExp
@@ -656,11 +660,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               `${e.category} budget exceeded!`,
               `You've spent all of your ₹${catLimit} ${e.category} budget this month.`
             );
-          } else if (catPct >= 80 && !notifiedThresholds.current.has(`${e.category}-80`)) {
-            notifiedThresholds.current.add(`${e.category}-80`);
+          } else if (catPct >= warnPct && !notifiedThresholds.current.has(`${e.category}-${warnKey}`)) {
+            notifiedThresholds.current.add(`${e.category}-${warnKey}`);
             sendImmediateNotification(
-              `${e.category} budget at 80%`,
-              `You've used 80% of your ₹${catLimit} ${e.category} budget.`
+              `${e.category} budget at ${warnKey}%`,
+              `You've used ${warnKey}% of your ₹${catLimit} ${e.category} budget.`
             );
           }
         }
@@ -673,11 +677,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             "Monthly budget exceeded!",
             `You've spent all of your ₹${bud.totalAmount} monthly budget.`
           );
-        } else if (totalPct >= 80 && !notifiedThresholds.current.has("total-80")) {
-          notifiedThresholds.current.add("total-80");
+        } else if (totalPct >= warnPct && !notifiedThresholds.current.has(`total-${warnKey}`)) {
+          notifiedThresholds.current.add(`total-${warnKey}`);
           sendImmediateNotification(
-            "Monthly budget at 80%",
-            `You've used 80% of your ₹${bud.totalAmount} monthly budget.`
+            `Monthly budget at ${warnKey}%`,
+            `You've used ${warnKey}% of your ₹${bud.totalAmount} monthly budget.`
           );
         }
 
