@@ -6,7 +6,7 @@ import {
   useFonts,
 } from "@expo-google-fonts/inter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Stack } from "expo-router";
+import { Redirect, Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -22,15 +22,30 @@ SplashScreen.preventAutoHideAsync();
 const queryClient = new QueryClient();
 
 function RootLayoutNav() {
-  const { isLocked, isLoaded } = useApp();
+  const { isLocked, isLoaded, isOnboarded } = useApp();
 
   if (!isLoaded) return null;
+
+  if (!isOnboarded) {
+    return (
+      <>
+        <Stack screenOptions={{ headerBackTitle: "Back" }}>
+          <Stack.Screen name="setup" options={{ headerShown: false }} />
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="settings" options={{ headerShown: false }} />
+          <Stack.Screen name="+not-found" />
+        </Stack>
+        <Redirect href="/setup" />
+      </>
+    );
+  }
 
   return (
     <>
       <Stack screenOptions={{ headerBackTitle: "Back" }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="settings" options={{ headerShown: false }} />
+        <Stack.Screen name="setup" options={{ headerShown: false }} />
         <Stack.Screen name="+not-found" />
       </Stack>
       {isLocked && <PinLock />}

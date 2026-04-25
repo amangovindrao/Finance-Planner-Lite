@@ -11,6 +11,7 @@ import React, {
 } from "react";
 import { Platform, Share } from "react-native";
 import {
+  DbAccount,
   DbBudget,
   DbExpense,
   DbSavingsGoal,
@@ -47,6 +48,27 @@ export const CATEGORY_COLORS: Record<Category, string> = {
   Miscellaneous: "#94A3B8",
 };
 
+export type AccountType = "bank" | "wallet" | "cash";
+
+export interface Account {
+  id: string;
+  name: string;
+  type: AccountType;
+  balance: number;
+  icon: string;
+  color: string;
+}
+
+export const ACCOUNT_ICONS: Record<AccountType, string> = {
+  bank: "card-outline",
+  wallet: "wallet-outline",
+  cash: "cash-outline",
+};
+
+export const ACCOUNT_COLORS = [
+  "#4B7CF6", "#00C781", "#A78BFA", "#FB923C", "#60A5FA", "#4ECDC4", "#FF6B6B",
+];
+
 export interface Expense {
   id: string;
   amount: number;
@@ -54,6 +76,7 @@ export interface Expense {
   description: string;
   date: string;
   isRecurring: boolean;
+  sourceId: string | null;
 }
 
 export interface Budget {
@@ -107,6 +130,9 @@ const AS_KEYS = {
   pin: "@ft_pin",
   streak: "@ft_streak",
   lastMonth: "@ft_last_month",
+  accounts: "@ft_accounts",
+  userName: "@ft_user_name",
+  isOnboarded: "@ft_is_onboarded",
 };
 
 function generateId(): string {
@@ -136,6 +162,18 @@ function rowToExpense(row: DbExpense): Expense {
     description: row.description,
     date: row.date,
     isRecurring: row.is_recurring === 1,
+    sourceId: row.source_id ?? null,
+  };
+}
+
+function rowToAccount(row: DbAccount): Account {
+  return {
+    id: row.id,
+    name: row.name,
+    type: row.type as AccountType,
+    balance: row.balance,
+    icon: row.icon,
+    color: row.color,
   };
 }
 
@@ -183,11 +221,14 @@ interface AppContextType {
   tasks: Task[];
   savingsGoals: SavingsGoal[];
   templates: Template[];
+  accounts: Account[];
   pin: string | null;
   isLocked: boolean;
   streak: number;
   currentMonth: string;
   isLoaded: boolean;
+  userName: string;
+  isOnboarded: boolean;
   addExpense: (e: Omit<Expense, "id">) => void;
   updateExpense: (id: string, u: Partial<Expense>) => void;
   deleteExpense: (id: string) => void;
@@ -200,13 +241,19 @@ interface AppContextType {
   deleteSavingsGoal: (id: string) => void;
   addTemplate: (t: Omit<Template, "id">) => void;
   deleteTemplate: (id: string) => void;
+  addAccount: (a: Omit<Account, "id">) => void;
+  updateAccount: (id: string, u: Partial<Account>) => void;
+  deleteAccount: (id: string) => void;
   setPin: (p: string | null) => void;
   unlockWithPin: (p: string) => boolean;
   exportCSV: () => Promise<void>;
   getMonthExpenses: () => Expense[];
   getCategoryTotal: (c: Category) => number;
   getTotalSpent: () => number;
+  getTodaySpent: () => number;
+  getTotalBalance: () => number;
   getInsights: () => string[];
+  completeOnboarding: (name: string, budget: number, initialAccounts: Omit<Account, "id">[]) => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -217,9 +264,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [pin, setPin_] = useState<string | null>(null);
   const [isLocked, setIsLocked] = useState(false);
   const [streak, setStreak] = useState(0);
+  const [userName, setUserName] = useState("");
+  const [isOnboarded, setIsOnboarded] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const currentMonth = new Date().toISOString().slice(0, 7);
   const initialized = useRef(false);
@@ -236,16 +286,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   async function loadFromAsyncStorage() {
     try {
-      const [expRaw, budRaw, tasksRaw, goalsRaw, tmplRaw, pinRaw, streakRaw, lastMonthRaw] =
-        await AsyncStorage.multiGet(Object.values(AS_KEYS));
-      const loadedExpenses: Expense[] = expRaw[1] ? JSON.parse(expRaw[1]) : [];
-      const loadedBudget: Budget = budRaw[1] ? JSON.parse(budRaw[1]) : DEFAULT_BUDGET;
-      const loadedTasks: Task[] = tasksRaw[1] ? JSON.parse(tasksRaw[1]) : [];
-      const loadedGoals: SavingsGoal[] = goalsRaw[1] ? JSON.parse(goalsRaw[1]) : [];
-      const loadedTemplates: Template[] = tmplRaw[1] ? JSON.parse(tmplRaw[1]) : [];
-      const loadedPin: string | null = pinRaw[1] ?? null;
-      const loadedStreak: number = streakRaw[1] ? parseInt(streakRaw[1]) : 0;
-      const lastMonth: string = lastMonthRaw[1] ?? "";
+      const keys = Object.values(AS_KEYS);
+      const pairs = await AsyncStorage.multiGet(keys);
+      const map: Record<string, string | null> = {};
+      pairs.forEach(([k, v]) => { map[k] = v; });
+
+      const loadedExpenses: Expense[] = map[AS_KEYS.expenses] ? JSON.parse(map[AS_KEYS.expenses]!) : [];
+      const loadedBudget: Budget = map[AS_KEYS.budget] ? JSON.parse(map[AS_KEYS.budget]!) : DEFAULT_BUDGET;
+      const loadedTasks: Task[] = map[AS_KEYS.tasks] ? JSON.parse(map[AS_KEYS.tasks]!) : [];
+      const loadedGoals: SavingsGoal[] = map[AS_KEYS.goals] ? JSON.parse(map[AS_KEYS.goals]!) : [];
+      const loadedTemplates: Template[] = map[AS_KEYS.templates] ? JSON.parse(map[AS_KEYS.templates]!) : [];
+      const loadedAccounts: Account[] = map[AS_KEYS.accounts] ? JSON.parse(map[AS_KEYS.accounts]!) : [];
+      const loadedPin: string | null = map[AS_KEYS.pin] ?? null;
+      const loadedStreak: number = map[AS_KEYS.streak] ? parseInt(map[AS_KEYS.streak]!) : 0;
+      const loadedUserName: string = map[AS_KEYS.userName] ?? "";
+      const loadedIsOnboarded: boolean = map[AS_KEYS.isOnboarded] === "true";
+      const lastMonth: string = map[AS_KEYS.lastMonth] ?? "";
 
       let updatedExpenses = [...loadedExpenses];
       if (lastMonth !== currentMonth) {
@@ -263,14 +319,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           await AsyncStorage.setItem(AS_KEYS.expenses, JSON.stringify(updatedExpenses));
         }
       }
+
       setExpenses(updatedExpenses);
       setBudget(loadedBudget);
       setTasks(loadedTasks);
       setSavingsGoals(loadedGoals);
       setTemplates(loadedTemplates);
+      setAccounts(loadedAccounts);
       setPin_(loadedPin);
       setIsLocked(!!loadedPin);
       setStreak(loadedStreak);
+      setUserName(loadedUserName);
+      setIsOnboarded(loadedIsOnboarded);
     } catch (err) {
       console.warn("AS load error:", err);
     } finally {
@@ -296,12 +356,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const loadedGoals = goalRows.map(rowToGoal);
       const tmplRows = db.getAllSync<DbTemplate>("SELECT * FROM templates");
       const loadedTemplates = tmplRows.map(rowToTemplate);
+      const acctRows = db.getAllSync<DbAccount>("SELECT * FROM accounts");
+      const loadedAccounts = acctRows.map(rowToAccount);
       const pinRow = db.getFirstSync<{ value: string }>("SELECT value FROM settings WHERE key = 'pin'");
       const loadedPin = pinRow?.value ?? null;
       const streakRow = db.getFirstSync<{ value: string }>("SELECT value FROM settings WHERE key = 'streak'");
       const loadedStreak = streakRow ? parseInt(streakRow.value) : 0;
       const lastMonthRow = db.getFirstSync<{ value: string }>("SELECT value FROM settings WHERE key = 'last_month'");
       const lastMonth = lastMonthRow?.value ?? "";
+      const userNameRow = db.getFirstSync<{ value: string }>("SELECT value FROM settings WHERE key = 'user_name'");
+      const loadedUserName = userNameRow?.value ?? "";
+      const onboardedRow = db.getFirstSync<{ value: string }>("SELECT value FROM settings WHERE key = 'is_onboarded'");
+      const loadedIsOnboarded = onboardedRow?.value === "true";
 
       let updatedExpenses = [...loadedExpenses];
       if (lastMonth !== currentMonth) {
@@ -313,8 +379,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           if (!thisMonthDescs.has(e.description.toLowerCase())) {
             const newExp: Expense = { ...e, id: generateId(), date: `${currentMonth}-01` };
             db.runSync(
-              "INSERT INTO expenses (id, amount, category, description, date, is_recurring) VALUES (?, ?, ?, ?, ?, ?)",
-              [newExp.id, newExp.amount, newExp.category, newExp.description, newExp.date, 1]
+              "INSERT INTO expenses (id, amount, category, description, date, is_recurring, source_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+              [newExp.id, newExp.amount, newExp.category, newExp.description, newExp.date, 1, newExp.sourceId ?? null]
             );
             updatedExpenses.push(newExp);
           }
@@ -327,9 +393,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setTasks(loadedTasks);
       setSavingsGoals(loadedGoals);
       setTemplates(loadedTemplates);
+      setAccounts(loadedAccounts);
       setPin_(loadedPin);
       setIsLocked(!!loadedPin);
       setStreak(loadedStreak);
+      setUserName(loadedUserName);
+      setIsOnboarded(loadedIsOnboarded);
     } catch (err) {
       console.warn("SQLite load error:", err);
       loadFromAsyncStorage();
@@ -363,13 +432,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return getMonthExpenses().reduce((s, e) => s + e.amount, 0);
   }, [getMonthExpenses]);
 
+  const getTodaySpent = useCallback((): number => {
+    const today = new Date().toISOString().slice(0, 10);
+    return expenses.filter((e) => e.date === today).reduce((s, e) => s + e.amount, 0);
+  }, [expenses]);
+
+  const getTotalBalance = useCallback((): number => {
+    return accounts.reduce((s, a) => s + a.balance, 0);
+  }, [accounts]);
+
   const getInsights = useCallback((): string[] => {
     const insights: string[] = [];
     const total = getTotalSpent();
     const pct = budget.totalAmount > 0 ? (total / budget.totalAmount) * 100 : 0;
     const remaining = budget.totalAmount - total;
 
-    if (pct > 90) insights.push("Close to your monthly budget limit.");
+    if (pct > 90) insights.push("Heads up — you're close to your monthly budget limit.");
     else if (pct < 50) insights.push(`On track — only ${Math.round(pct)}% of budget used.`);
 
     CATEGORIES.forEach((cat) => {
@@ -381,16 +459,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (streak >= 3) insights.push(`${streak}-day spending streak — keep it up!`);
     if (remaining > 0 && pct <= 80) insights.push(`$${remaining.toFixed(0)} remaining this month.`);
 
+    if (accounts.length > 0) {
+      const lowAccount = accounts.find((a) => a.balance < 50 && a.balance >= 0);
+      if (lowAccount) insights.push(`${lowAccount.name} balance is running low ($${lowAccount.balance.toFixed(0)}).`);
+    }
+
     return insights.slice(0, 3);
-  }, [getTotalSpent, budget, getCategoryTotal, streak]);
+  }, [getTotalSpent, budget, getCategoryTotal, streak, accounts]);
 
   const addExpense = useCallback((e: Omit<Expense, "id">) => {
     const id = generateId();
-    const newExpense = { ...e, id };
+    const newExpense: Expense = { ...e, id };
     dbRun(
-      "INSERT INTO expenses (id, amount, category, description, date, is_recurring) VALUES (?, ?, ?, ?, ?, ?)",
-      [id, e.amount, e.category, e.description, e.date, e.isRecurring ? 1 : 0]
+      "INSERT INTO expenses (id, amount, category, description, date, is_recurring, source_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [id, e.amount, e.category, e.description, e.date, e.isRecurring ? 1 : 0, e.sourceId ?? null]
     );
+
+    if (e.sourceId) {
+      dbRun("UPDATE accounts SET balance = balance - ? WHERE id = ?", [e.amount, e.sourceId]);
+      setAccounts((prev) => {
+        const next = prev.map((a) => a.id === e.sourceId ? { ...a, balance: a.balance - e.amount } : a);
+        if (Platform.OS === "web") AsyncStorage.setItem(AS_KEYS.accounts, JSON.stringify(next));
+        return next;
+      });
+    }
+
     setExpenses((prev) => {
       const next = [newExpense, ...prev];
       asSet("expenses", next);
@@ -412,13 +505,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const updateExpense = useCallback((id: string, u: Partial<Expense>) => {
     setExpenses((prev) => {
+      const old = prev.find((e) => e.id === id);
       const updated = prev.map((e) => (e.id === id ? { ...e, ...u } : e));
       const exp = updated.find((e) => e.id === id);
       if (exp) {
         dbRun(
-          "UPDATE expenses SET amount=?, category=?, description=?, date=?, is_recurring=? WHERE id=?",
-          [exp.amount, exp.category, exp.description, exp.date, exp.isRecurring ? 1 : 0, id]
+          "UPDATE expenses SET amount=?, category=?, description=?, date=?, is_recurring=?, source_id=? WHERE id=?",
+          [exp.amount, exp.category, exp.description, exp.date, exp.isRecurring ? 1 : 0, exp.sourceId ?? null, id]
         );
+        if (old && u.amount !== undefined && old.sourceId && old.sourceId === exp.sourceId) {
+          const diff = u.amount - old.amount;
+          dbRun("UPDATE accounts SET balance = balance - ? WHERE id = ?", [diff, old.sourceId]);
+          setAccounts((accs) => accs.map((a) => a.id === old.sourceId ? { ...a, balance: a.balance - diff } : a));
+        }
         asSet("expenses", updated);
       }
       return updated;
@@ -426,8 +525,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const deleteExpense = useCallback((id: string) => {
-    dbRun("DELETE FROM expenses WHERE id=?", [id]);
     setExpenses((prev) => {
+      const exp = prev.find((e) => e.id === id);
+      if (exp?.sourceId) {
+        dbRun("UPDATE accounts SET balance = balance + ? WHERE id = ?", [exp.amount, exp.sourceId]);
+        setAccounts((accs) => accs.map((a) => a.id === exp.sourceId ? { ...a, balance: a.balance + exp.amount } : a));
+      }
+      dbRun("DELETE FROM expenses WHERE id=?", [id]);
       const next = prev.filter((e) => e.id !== id);
       asSet("expenses", next);
       return next;
@@ -545,6 +649,44 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const addAccount = useCallback((a: Omit<Account, "id">) => {
+    const id = generateId();
+    const newAccount: Account = { ...a, id };
+    dbRun(
+      "INSERT INTO accounts (id, name, type, balance, icon, color) VALUES (?, ?, ?, ?, ?, ?)",
+      [id, a.name, a.type, a.balance, a.icon, a.color]
+    );
+    setAccounts((prev) => {
+      const next = [...prev, newAccount];
+      if (Platform.OS === "web") AsyncStorage.setItem(AS_KEYS.accounts, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const updateAccount = useCallback((id: string, u: Partial<Account>) => {
+    setAccounts((prev) => {
+      const updated = prev.map((a) => (a.id === id ? { ...a, ...u } : a));
+      const acct = updated.find((a) => a.id === id);
+      if (acct) {
+        dbRun(
+          "UPDATE accounts SET name=?, type=?, balance=?, icon=?, color=? WHERE id=?",
+          [acct.name, acct.type, acct.balance, acct.icon, acct.color, id]
+        );
+        if (Platform.OS === "web") AsyncStorage.setItem(AS_KEYS.accounts, JSON.stringify(updated));
+      }
+      return updated;
+    });
+  }, []);
+
+  const deleteAccount = useCallback((id: string) => {
+    dbRun("DELETE FROM accounts WHERE id=?", [id]);
+    setAccounts((prev) => {
+      const next = prev.filter((a) => a.id !== id);
+      if (Platform.OS === "web") AsyncStorage.setItem(AS_KEYS.accounts, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
   const setPin = useCallback((p: string | null) => {
     setPin_(p);
     if (Platform.OS !== "web") {
@@ -574,9 +716,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const exportCSV = useCallback(async () => {
-    const headers = "Date,Category,Description,Amount,Recurring\n";
+    const headers = "Date,Category,Description,Amount,Recurring,Source\n";
     const rows = expenses
-      .map((e) => `${e.date},${e.category},"${e.description}",${e.amount},${e.isRecurring}`)
+      .map((e) => {
+        const srcName = accounts.find((a) => a.id === e.sourceId)?.name ?? "";
+        return `${e.date},${e.category},"${e.description}",${e.amount},${e.isRecurring},"${srcName}"`;
+      })
       .join("\n");
     const csv = headers + rows;
 
@@ -594,18 +739,54 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
     }
     Share.share({ message: csv, title: "Finance Export" });
-  }, [expenses]);
+  }, [expenses, accounts]);
+
+  const completeOnboarding = useCallback(
+    (name: string, budgetAmount: number, initialAccounts: Omit<Account, "id">[]) => {
+      setUserName(name);
+      const newBudget = { ...DEFAULT_BUDGET, totalAmount: budgetAmount };
+      setBudget(newBudget);
+
+      if (Platform.OS !== "web") {
+        dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES ('user_name', ?)", [name]);
+        dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES ('is_onboarded', ?)", ["true"]);
+        dbRun("UPDATE budgets SET total_amount=? WHERE id=1", [budgetAmount]);
+      } else {
+        AsyncStorage.setItem(AS_KEYS.userName, name);
+        AsyncStorage.setItem(AS_KEYS.isOnboarded, "true");
+        AsyncStorage.setItem(AS_KEYS.budget, JSON.stringify(newBudget));
+      }
+
+      const newAccounts: Account[] = initialAccounts.map((a) => {
+        const id = generateId();
+        dbRun(
+          "INSERT INTO accounts (id, name, type, balance, icon, color) VALUES (?, ?, ?, ?, ?, ?)",
+          [id, a.name, a.type, a.balance, a.icon, a.color]
+        );
+        return { ...a, id };
+      });
+      setAccounts(newAccounts);
+      if (Platform.OS === "web") {
+        AsyncStorage.setItem(AS_KEYS.accounts, JSON.stringify(newAccounts));
+      }
+
+      setIsOnboarded(true);
+    },
+    []
+  );
 
   const value: AppContextType = {
-    expenses, budget, tasks, savingsGoals, templates,
-    pin, isLocked, streak, currentMonth, isLoaded,
+    expenses, budget, tasks, savingsGoals, templates, accounts,
+    pin, isLocked, streak, currentMonth, isLoaded, userName, isOnboarded,
     addExpense, updateExpense, deleteExpense, updateBudget,
     addTask, updateTask, deleteTask,
     addSavingsGoal, updateSavingsGoal, deleteSavingsGoal,
     addTemplate, deleteTemplate,
+    addAccount, updateAccount, deleteAccount,
     setPin, unlockWithPin,
     exportCSV,
-    getMonthExpenses, getCategoryTotal, getTotalSpent, getInsights,
+    getMonthExpenses, getCategoryTotal, getTotalSpent, getTodaySpent, getTotalBalance, getInsights,
+    completeOnboarding,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

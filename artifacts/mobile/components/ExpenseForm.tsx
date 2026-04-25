@@ -33,7 +33,7 @@ interface Props {
 export function ExpenseForm({ visible, onClose, editExpense }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { addExpense, updateExpense, templates, addTemplate } = useApp();
+  const { addExpense, updateExpense, templates, addTemplate, accounts } = useApp();
 
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState<Category>("Food");
@@ -41,6 +41,7 @@ export function ExpenseForm({ visible, onClose, editExpense }: Props) {
   const [isRecurring, setIsRecurring] = useState(false);
   const [showSaveTemplate, setShowSaveTemplate] = useState(false);
   const [templateName, setTemplateName] = useState("");
+  const [sourceId, setSourceId] = useState<string | null>(null);
 
   useEffect(() => {
     if (editExpense) {
@@ -48,11 +49,13 @@ export function ExpenseForm({ visible, onClose, editExpense }: Props) {
       setCategory(editExpense.category);
       setDescription(editExpense.description);
       setIsRecurring(editExpense.isRecurring);
+      setSourceId(editExpense.sourceId);
     } else {
       setAmount("");
       setCategory("Food");
       setDescription("");
       setIsRecurring(false);
+      setSourceId(accounts.length > 0 ? accounts[0].id : null);
     }
   }, [editExpense, visible]);
 
@@ -76,9 +79,9 @@ export function ExpenseForm({ visible, onClose, editExpense }: Props) {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     const today = new Date().toISOString().slice(0, 10);
     if (editExpense) {
-      updateExpense(editExpense.id, { amount: parsed, category, description, isRecurring });
+      updateExpense(editExpense.id, { amount: parsed, category, description, isRecurring, sourceId });
     } else {
-      addExpense({ amount: parsed, category, description, date: today, isRecurring });
+      addExpense({ amount: parsed, category, description, date: today, isRecurring, sourceId });
     }
     onClose();
   }
@@ -155,17 +158,45 @@ export function ExpenseForm({ visible, onClose, editExpense }: Props) {
               onPress={() => setCategory(c)}
             >
               <View style={[s.catDot, { backgroundColor: CATEGORY_COLORS[c] }]} />
-              <Text
-                style={[
-                  s.catLabel,
-                  { color: category === c ? CATEGORY_COLORS[c] : colors.mutedForeground },
-                ]}
-              >
+              <Text style={[s.catLabel, { color: category === c ? CATEGORY_COLORS[c] : colors.mutedForeground }]}>
                 {c}
               </Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
+
+        {accounts.length > 0 && (
+          <>
+            <Text style={s.sectionLabel}>Pay From</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.catScroll}>
+              <TouchableOpacity
+                style={[s.sourceChip, sourceId === null && { borderColor: colors.mutedForeground, backgroundColor: colors.mutedForeground + "20" }]}
+                onPress={() => setSourceId(null)}
+              >
+                <Ionicons name="ellipsis-horizontal" size={14} color={sourceId === null ? colors.foreground : colors.mutedForeground} />
+                <Text style={[s.sourceLabel, { color: sourceId === null ? colors.foreground : colors.mutedForeground }]}>None</Text>
+              </TouchableOpacity>
+              {accounts.map((a) => (
+                <TouchableOpacity
+                  key={a.id}
+                  style={[
+                    s.sourceChip,
+                    sourceId === a.id && { backgroundColor: a.color + "25", borderColor: a.color },
+                  ]}
+                  onPress={() => setSourceId(a.id)}
+                >
+                  <Ionicons name={a.icon as "card-outline"} size={14} color={sourceId === a.id ? a.color : colors.mutedForeground} />
+                  <Text style={[s.sourceLabel, { color: sourceId === a.id ? a.color : colors.mutedForeground }]}>
+                    {a.name}
+                  </Text>
+                  {sourceId === a.id && (
+                    <Text style={[s.sourceBalance, { color: a.color }]}>${a.balance.toFixed(0)}</Text>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </>
+        )}
 
         <View style={s.row}>
           <TouchableOpacity
@@ -221,10 +252,7 @@ export function ExpenseForm({ visible, onClose, editExpense }: Props) {
 
 function createStyles(colors: ReturnType<typeof useColors>, insets: ReturnType<typeof useSafeAreaInsets>) {
   return StyleSheet.create({
-    backdrop: {
-      flex: 1,
-      backgroundColor: "rgba(0,0,0,0.6)",
-    },
+    backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)" },
     sheet: {
       backgroundColor: colors.card,
       borderTopLeftRadius: 24,
@@ -234,141 +262,61 @@ function createStyles(colors: ReturnType<typeof useColors>, insets: ReturnType<t
       gap: 14,
     },
     handle: {
-      width: 36,
-      height: 4,
-      backgroundColor: colors.border,
-      borderRadius: 2,
-      alignSelf: "center",
-      marginBottom: 4,
+      width: 36, height: 4, backgroundColor: colors.border,
+      borderRadius: 2, alignSelf: "center", marginBottom: 4,
     },
-    header: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-    },
-    title: {
-      fontSize: 18,
-      fontFamily: "Inter_700Bold",
-      color: colors.foreground,
-    },
-    templates: {
-      flexGrow: 0,
-    },
+    header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+    title: { fontSize: 18, fontFamily: "Inter_700Bold", color: colors.foreground },
+    templates: { flexGrow: 0 },
     templateChip: {
-      backgroundColor: colors.secondary,
-      borderRadius: 20,
-      paddingHorizontal: 14,
-      paddingVertical: 6,
-      marginRight: 8,
+      backgroundColor: colors.secondary, borderRadius: 20,
+      paddingHorizontal: 14, paddingVertical: 6, marginRight: 8,
     },
-    templateText: {
-      color: colors.foreground,
-      fontSize: 13,
-      fontFamily: "Inter_500Medium",
-    },
-    amountRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 4,
-    },
-    currencySign: {
-      fontSize: 32,
-      fontFamily: "Inter_600SemiBold",
-      color: colors.mutedForeground,
-    },
-    amountInput: {
-      flex: 1,
-      fontSize: 40,
-      fontFamily: "Inter_700Bold",
-      color: colors.foreground,
-    },
+    templateText: { color: colors.foreground, fontSize: 13, fontFamily: "Inter_500Medium" },
+    amountRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+    currencySign: { fontSize: 32, fontFamily: "Inter_600SemiBold", color: colors.mutedForeground },
+    amountInput: { flex: 1, fontSize: 40, fontFamily: "Inter_700Bold", color: colors.foreground },
     descInput: {
-      backgroundColor: colors.input,
-      borderRadius: 12,
-      padding: 14,
-      color: colors.foreground,
-      fontFamily: "Inter_400Regular",
-      fontSize: 15,
+      backgroundColor: colors.input, borderRadius: 12, padding: 14,
+      color: colors.foreground, fontFamily: "Inter_400Regular", fontSize: 15,
     },
     sectionLabel: {
-      color: colors.mutedForeground,
-      fontSize: 12,
-      fontFamily: "Inter_500Medium",
-      textTransform: "uppercase",
-      letterSpacing: 0.8,
+      color: colors.mutedForeground, fontSize: 12, fontFamily: "Inter_500Medium",
+      textTransform: "uppercase", letterSpacing: 0.8,
     },
-    catScroll: {
-      flexGrow: 0,
-    },
+    catScroll: { flexGrow: 0 },
     catChip: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      borderRadius: 20,
-      borderWidth: 1,
-      borderColor: colors.border,
-      marginRight: 8,
+      flexDirection: "row", alignItems: "center", gap: 6,
+      paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20,
+      borderWidth: 1, borderColor: colors.border, marginRight: 8,
     },
-    catDot: {
-      width: 6,
-      height: 6,
-      borderRadius: 3,
+    catDot: { width: 6, height: 6, borderRadius: 3 },
+    catLabel: { fontSize: 13, fontFamily: "Inter_500Medium" },
+    sourceChip: {
+      flexDirection: "row", alignItems: "center", gap: 6,
+      paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20,
+      borderWidth: 1, borderColor: colors.border, marginRight: 8,
     },
-    catLabel: {
-      fontSize: 13,
-      fontFamily: "Inter_500Medium",
-    },
-    row: {
-      flexDirection: "row",
-      gap: 12,
-    },
+    sourceLabel: { fontSize: 13, fontFamily: "Inter_500Medium" },
+    sourceBalance: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
+    row: { flexDirection: "row", gap: 12 },
     toggle: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      borderRadius: 10,
-      borderWidth: 1,
-      borderColor: colors.border,
+      flexDirection: "row", alignItems: "center", gap: 6,
+      paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10,
+      borderWidth: 1, borderColor: colors.border,
     },
-    toggleLabel: {
-      fontSize: 13,
-      fontFamily: "Inter_500Medium",
-    },
-    tmplRow: {
-      flexDirection: "row",
-      gap: 8,
-    },
+    toggleLabel: { fontSize: 13, fontFamily: "Inter_500Medium" },
+    tmplRow: { flexDirection: "row", gap: 8 },
     tmplInput: {
-      flex: 1,
-      backgroundColor: colors.input,
-      borderRadius: 10,
-      padding: 12,
-      color: colors.foreground,
-      fontFamily: "Inter_400Regular",
+      flex: 1, backgroundColor: colors.input, borderRadius: 10,
+      padding: 12, color: colors.foreground, fontFamily: "Inter_400Regular",
     },
     tmplSave: {
-      backgroundColor: colors.accent,
-      borderRadius: 10,
-      paddingHorizontal: 16,
-      justifyContent: "center",
+      backgroundColor: colors.accent, borderRadius: 10,
+      paddingHorizontal: 16, justifyContent: "center",
     },
-    tmplSaveText: {
-      fontFamily: "Inter_600SemiBold",
-      fontSize: 14,
-    },
-    submitBtn: {
-      borderRadius: 14,
-      padding: 16,
-      alignItems: "center",
-      marginTop: 4,
-    },
-    submitText: {
-      fontSize: 16,
-      fontFamily: "Inter_700Bold",
-    },
+    tmplSaveText: { fontFamily: "Inter_600SemiBold", fontSize: 14 },
+    submitBtn: { borderRadius: 14, padding: 16, alignItems: "center", marginTop: 4 },
+    submitText: { fontSize: 16, fontFamily: "Inter_700Bold" },
   });
 }

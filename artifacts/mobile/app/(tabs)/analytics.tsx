@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BarChart, PieChart } from "react-native-chart-kit";
+import { Ionicons } from "@expo/vector-icons";
 import { CATEGORIES, CATEGORY_COLORS, Category, useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
 
@@ -21,7 +22,7 @@ const SCREEN_WIDTH = Dimensions.get("window").width;
 export default function AnalyticsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { expenses, budget, currentMonth, getInsights } = useApp();
+  const { expenses, budget, accounts, currentMonth, getInsights } = useApp();
   const [period, setPeriod] = useState<Period>("month");
   const insights = getInsights();
 
@@ -76,6 +77,21 @@ export default function AnalyticsScreen() {
       datasets: [{ data: days.map((d) => totals[d] || 0) }],
     };
   }, [expenses]);
+
+  const sourceTotals = useMemo(() => {
+    const result: { id: string; name: string; icon: string; color: string; total: number }[] = [];
+    accounts.forEach((a) => {
+      const total = filteredExpenses
+        .filter((e) => e.sourceId === a.id)
+        .reduce((s, e) => s + e.amount, 0);
+      if (total > 0) result.push({ id: a.id, name: a.name, icon: a.icon, color: a.color, total });
+    });
+    const untagged = filteredExpenses
+      .filter((e) => !e.sourceId)
+      .reduce((s, e) => s + e.amount, 0);
+    if (untagged > 0) result.push({ id: "_none", name: "Untagged", icon: "ellipsis-horizontal-outline", color: "#94A3B8", total: untagged });
+    return result.sort((a, b) => b.total - a.total);
+  }, [filteredExpenses, accounts]);
 
   const chartConfig = {
     backgroundColor: colors.card,
@@ -197,6 +213,28 @@ export default function AnalyticsScreen() {
             );
           })}
         </View>
+
+        {sourceTotals.length > 0 && (
+          <View style={[styles.card, { backgroundColor: colors.card }]}>
+            <Text style={[styles.cardTitle, { color: colors.foreground }]}>Spending by Account</Text>
+            {sourceTotals.map((s) => {
+              const maxTotal = sourceTotals[0]?.total ?? 1;
+              const pct = maxTotal > 0 ? (s.total / maxTotal) * 100 : 0;
+              return (
+                <View key={s.id} style={styles.budgetRow}>
+                  <View style={styles.budgetMeta}>
+                    <Ionicons name={s.icon as "card-outline"} size={15} color={s.color} />
+                    <Text style={[styles.budgetCat, { color: colors.foreground }]}>{s.name}</Text>
+                    <Text style={[styles.budgetSpent, { color: colors.foreground }]}>${s.total.toFixed(0)}</Text>
+                  </View>
+                  <View style={[styles.bar, { backgroundColor: colors.muted }]}>
+                    <View style={[styles.barFill, { width: `${pct}%` as DimensionValue, backgroundColor: s.color }]} />
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        )}
 
         {insights.length > 0 && (
           <View style={[styles.card, { backgroundColor: colors.card }]}>

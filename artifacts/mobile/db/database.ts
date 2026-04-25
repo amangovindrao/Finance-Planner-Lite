@@ -1,5 +1,14 @@
 import { Platform } from "react-native";
-import { CREATE_TABLES_SQL } from "./schema";
+import { CREATE_TABLES_SQL, MIGRATE_SQL_STATEMENTS } from "./schema";
+
+export type DbAccount = {
+  id: string;
+  name: string;
+  type: string;
+  balance: number;
+  icon: string;
+  color: string;
+};
 
 export type DbExpense = {
   id: string;
@@ -8,6 +17,7 @@ export type DbExpense = {
   description: string;
   date: string;
   is_recurring: number;
+  source_id: string | null;
 };
 
 export type DbBudget = {
@@ -76,6 +86,15 @@ export function initDatabase(): void {
   try {
     const db = getDb();
     db.execSync(CREATE_TABLES_SQL);
+
+    for (const stmt of MIGRATE_SQL_STATEMENTS) {
+      try {
+        db.execSync(stmt);
+      } catch (_) {
+        // column already exists — ignore
+      }
+    }
+
     const existing = db.getFirstSync<{ id: number }>("SELECT id FROM budgets WHERE id = 1");
     if (!existing) {
       db.runSync(

@@ -1,11 +1,21 @@
 export const CREATE_TABLES_SQL = `
+  CREATE TABLE IF NOT EXISTS accounts (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'bank',
+    balance REAL NOT NULL DEFAULT 0,
+    icon TEXT NOT NULL DEFAULT 'card-outline',
+    color TEXT NOT NULL DEFAULT '#4B7CF6'
+  );
+
   CREATE TABLE IF NOT EXISTS expenses (
     id TEXT PRIMARY KEY NOT NULL,
     amount REAL NOT NULL,
     category TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
     date TEXT NOT NULL,
-    is_recurring INTEGER NOT NULL DEFAULT 0
+    is_recurring INTEGER NOT NULL DEFAULT 0,
+    source_id TEXT
   );
 
   CREATE TABLE IF NOT EXISTS budgets (
@@ -44,3 +54,7 @@ export const CREATE_TABLES_SQL = `
     value TEXT NOT NULL
   );
 `;
+
+export const MIGRATE_SQL_STATEMENTS = [
+  "ALTER TABLE expenses ADD COLUMN source_id TEXT",
+];
