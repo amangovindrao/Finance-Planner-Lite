@@ -2,7 +2,9 @@ import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
+  Alert,
   DimensionValue,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -21,9 +23,12 @@ import {
   CATEGORY_COLORS,
   Category,
   Expense,
+  Loan,
+  LoanType,
   useApp,
 } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
+import { fmt, fmtFull, fmtHidden } from "@/utils/currency";
 
 function getGreeting(): string {
   const h = new Date().getHours();
@@ -32,12 +37,17 @@ function getGreeting(): string {
   return "Good Evening";
 }
 
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const {
     budget,
     accounts,
+    loans,
     savingsGoals,
     streak,
     userName,
@@ -48,12 +58,23 @@ export default function HomeScreen() {
     getTotalBalance,
     getInsights,
     deleteExpense,
+    addLoan,
+    updateLoan,
+    deleteLoan,
+    isPrivacyMode,
+    togglePrivacyMode,
   } = useApp();
 
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [editExpense, setEditExpense] = useState<Expense | undefined>();
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
+  const [showLoanForm, setShowLoanForm] = useState(false);
+  const [editLoan, setEditLoan] = useState<Loan | undefined>();
+  const [loanPerson, setLoanPerson] = useState("");
+  const [loanAmount, setLoanAmount] = useState("");
+  const [loanType, setLoanType] = useState<LoanType>("lent");
+  const [loanNote, setLoanNote] = useState("");
 
   const monthExpenses = getMonthExpenses();
   const totalSpent = getTotalSpent();
@@ -62,6 +83,7 @@ export default function HomeScreen() {
   const remaining = budget.totalAmount - totalSpent;
   const pct = budget.totalAmount > 0 ? (totalSpent / budget.totalAmount) * 100 : 0;
   const insights = getInsights();
+  const activeLoans = loans.filter((l) => !l.settled);
 
   const filtered = searchQuery.trim()
     ? monthExpenses.filter(
@@ -73,6 +95,48 @@ export default function HomeScreen() {
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
+
+  function openLoanForm(loan?: Loan) {
+    if (loan) {
+      setEditLoan(loan);
+      setLoanPerson(loan.personName);
+      setLoanAmount(loan.amount.toString());
+      setLoanType(loan.type);
+      setLoanNote(loan.note);
+    } else {
+      setEditLoan(undefined);
+      setLoanPerson("");
+      setLoanAmount("");
+      setLoanType("lent");
+      setLoanNote("");
+    }
+    setShowLoanForm(true);
+  }
+
+  function saveLoan() {
+    const amt = parseFloat(loanAmount);
+    if (!loanPerson.trim() || isNaN(amt) || amt <= 0) {
+      Alert.alert("Error", "Please enter a valid person name and amount.");
+      return;
+    }
+    const loanData = {
+      personName: loanPerson.trim(),
+      amount: amt,
+      type: loanType,
+      date: today(),
+      note: loanNote.trim(),
+      settled: false,
+    };
+    if (editLoan) {
+      updateLoan(editLoan.id, loanData);
+    } else {
+      addLoan(loanData);
+    }
+    setShowLoanForm(false);
+  }
+
+  const amtDisplay = (val: number) => isPrivacyMode ? fmtHidden() : fmt(val);
+  const amtFullDisplay = (val: number) => isPrivacyMode ? fmtHidden() : fmtFull(val);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -109,6 +173,13 @@ export default function HomeScreen() {
               <Text style={[styles.streakText, { color: colors.primary }]}>{streak}</Text>
             </View>
           )}
+          <TouchableOpacity onPress={togglePrivacyMode}>
+            <Ionicons
+              name={isPrivacyMode ? "eye-off-outline" : "eye-outline"}
+              size={22}
+              color={isPrivacyMode ? colors.primary : colors.foreground}
+            />
+          </TouchableOpacity>
           {!showSearch && (
             <TouchableOpacity onPress={() => setShowSearch(true)}>
               <Ionicons name="search-outline" size={22} color={colors.foreground} />
@@ -130,7 +201,7 @@ export default function HomeScreen() {
             <View style={[styles.totalBalanceCard, { backgroundColor: colors.card }]}>
               <Text style={[styles.acctLabel, { color: colors.mutedForeground }]}>Total Balance</Text>
               <Text style={[styles.totalBalanceAmount, { color: colors.primary }]}>
-                ${totalBalance.toFixed(2)}
+                {amtDisplay(totalBalance)}
               </Text>
             </View>
             {accounts.map((a) => (
@@ -140,7 +211,7 @@ export default function HomeScreen() {
                 </View>
                 <Text style={[styles.acctName, { color: colors.mutedForeground }]}>{a.name}</Text>
                 <Text style={[styles.acctBalance, { color: a.balance < 0 ? colors.destructive : colors.foreground }]}>
-                  ${a.balance.toFixed(2)}
+                  {amtDisplay(a.balance)}
                 </Text>
               </View>
             ))}
@@ -153,7 +224,7 @@ export default function HomeScreen() {
           <View style={[styles.budgetRow, { borderTopColor: colors.border }]}>
             <Text style={[styles.budgetLabel, { color: colors.mutedForeground }]}>Monthly Budget</Text>
             <Text style={[styles.budgetValue, { color: colors.foreground }]}>
-              ${budget.totalAmount.toFixed(2)}
+              {amtDisplay(budget.totalAmount)}
             </Text>
           </View>
 
@@ -163,7 +234,7 @@ export default function HomeScreen() {
               <Text style={[styles.budgetLabel, { color: colors.mutedForeground }]}>Today's Spending</Text>
             </View>
             <Text style={[styles.budgetValue, { color: todaySpent > 0 ? colors.accent : colors.mutedForeground }]}>
-              ${todaySpent.toFixed(2)}
+              {amtDisplay(todaySpent)}
             </Text>
           </View>
         </View>
@@ -179,6 +250,66 @@ export default function HomeScreen() {
           </ScrollView>
         )}
 
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Given / Taken</Text>
+          <TouchableOpacity
+            style={[styles.addLoanBtn, { backgroundColor: colors.primary + "18" }]}
+            onPress={() => openLoanForm()}
+          >
+            <Ionicons name="add" size={15} color={colors.primary} />
+            <Text style={[styles.addLoanText, { color: colors.primary }]}>Add</Text>
+          </TouchableOpacity>
+        </View>
+
+        {activeLoans.length === 0 ? (
+          <View style={[styles.emptyLoans, { backgroundColor: colors.card }]}>
+            <Text style={{ fontSize: 20 }}>🤝</Text>
+            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>No pending money with anyone</Text>
+          </View>
+        ) : (
+          activeLoans.map((loan) => (
+            <Pressable
+              key={loan.id}
+              style={[
+                styles.loanCard,
+                {
+                  backgroundColor: colors.card,
+                  borderLeftColor: loan.type === "lent" ? "#22c55e" : "#f59e0b",
+                },
+              ]}
+              onLongPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                Alert.alert(
+                  loan.personName,
+                  "What do you want to do?",
+                  [
+                    { text: "Mark Settled", onPress: () => updateLoan(loan.id, { settled: true }) },
+                    { text: "Edit", onPress: () => openLoanForm(loan) },
+                    { text: "Delete", style: "destructive", onPress: () => deleteLoan(loan.id) },
+                    { text: "Cancel", style: "cancel" },
+                  ]
+                );
+              }}
+            >
+              <View style={[styles.loanTypeBadge, { backgroundColor: loan.type === "lent" ? "#22c55e22" : "#f59e0b22" }]}>
+                <Text style={[styles.loanTypeText, { color: loan.type === "lent" ? "#22c55e" : "#f59e0b" }]}>
+                  {loan.type === "lent" ? "GIVEN" : "TAKEN"}
+                </Text>
+              </View>
+              <View style={styles.loanInfo}>
+                <Text style={[styles.loanPerson, { color: colors.foreground }]}>{loan.personName}</Text>
+                {loan.note ? (
+                  <Text style={[styles.loanNote, { color: colors.mutedForeground }]} numberOfLines={1}>{loan.note}</Text>
+                ) : null}
+                <Text style={[styles.loanDate, { color: colors.mutedForeground }]}>{loan.date}</Text>
+              </View>
+              <Text style={[styles.loanAmount, { color: loan.type === "lent" ? "#22c55e" : "#f59e0b" }]}>
+                {isPrivacyMode ? fmtHidden() : fmtFull(loan.amount)}
+              </Text>
+            </Pressable>
+          ))
+        )}
+
         <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Spending</Text>
         {CATEGORIES.map((cat) => {
           const spent = getCategoryTotal(cat);
@@ -192,7 +323,7 @@ export default function HomeScreen() {
                 <View style={styles.catTop}>
                   <Text style={[styles.catName, { color: colors.foreground }]}>{cat}</Text>
                   <Text style={[styles.catAmount, { color: overBudget ? colors.destructive : colors.mutedForeground }]}>
-                    ${spent.toFixed(0)} / ${limit}
+                    {isPrivacyMode ? "****" : `${fmt(spent)} / ${fmt(limit)}`}
                   </Text>
                 </View>
                 <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
@@ -222,7 +353,7 @@ export default function HomeScreen() {
                   <View style={styles.goalHeader}>
                     <Text style={[styles.goalName, { color: colors.foreground }]}>{g.name}</Text>
                     <Text style={[styles.goalAmount, { color: colors.primary }]}>
-                      ${g.currentAmount.toFixed(0)} / ${g.targetAmount.toFixed(0)}
+                      {isPrivacyMode ? "****" : `${fmt(g.currentAmount)} / ${fmt(g.targetAmount)}`}
                     </Text>
                   </View>
                   <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
@@ -283,7 +414,9 @@ export default function HomeScreen() {
                   </View>
                 </View>
                 <View style={styles.expenseRight}>
-                  <Text style={[styles.expenseAmount, { color: colors.foreground }]}>-${e.amount.toFixed(2)}</Text>
+                  <Text style={[styles.expenseAmount, { color: colors.foreground }]}>
+                    {isPrivacyMode ? fmtHidden() : `-${fmtFull(e.amount)}`}
+                  </Text>
                   <View style={{ flexDirection: "row", gap: 4 }}>
                     {e.isRecurring && <Ionicons name="repeat" size={11} color={colors.mutedForeground} />}
                     <Text style={[styles.expenseCategory, { backgroundColor: CATEGORY_COLORS[e.category as Category] + "22", color: CATEGORY_COLORS[e.category as Category] }]}>
@@ -319,6 +452,73 @@ export default function HomeScreen() {
         onClose={() => { setShowExpenseForm(false); setEditExpense(undefined); }}
         editExpense={editExpense}
       />
+
+      <Modal visible={showLoanForm} transparent animationType="slide" onRequestClose={() => setShowLoanForm(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalBox, { backgroundColor: colors.card }]}>
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>
+              {editLoan ? "Edit" : "Add"} Given / Taken
+            </Text>
+
+            <View style={styles.loanTypeRow}>
+              <TouchableOpacity
+                style={[styles.typeBtn, loanType === "lent" && { backgroundColor: "#22c55e22", borderColor: "#22c55e" }]}
+                onPress={() => setLoanType("lent")}
+              >
+                <Text style={[styles.typeBtnText, { color: loanType === "lent" ? "#22c55e" : colors.mutedForeground }]}>
+                  💸 I Gave
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.typeBtn, loanType === "borrowed" && { backgroundColor: "#f59e0b22", borderColor: "#f59e0b" }]}
+                onPress={() => setLoanType("borrowed")}
+              >
+                <Text style={[styles.typeBtnText, { color: loanType === "borrowed" ? "#f59e0b" : colors.mutedForeground }]}>
+                  🤲 I Took
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <TextInput
+              style={[styles.modalInput, { backgroundColor: colors.background, color: colors.foreground, borderColor: colors.border }]}
+              value={loanPerson}
+              onChangeText={setLoanPerson}
+              placeholder="Person's name"
+              placeholderTextColor={colors.mutedForeground}
+            />
+            <TextInput
+              style={[styles.modalInput, { backgroundColor: colors.background, color: colors.foreground, borderColor: colors.border }]}
+              value={loanAmount}
+              onChangeText={setLoanAmount}
+              placeholder="Amount (₹)"
+              placeholderTextColor={colors.mutedForeground}
+              keyboardType="numeric"
+            />
+            <TextInput
+              style={[styles.modalInput, { backgroundColor: colors.background, color: colors.foreground, borderColor: colors.border }]}
+              value={loanNote}
+              onChangeText={setLoanNote}
+              placeholder="Note (optional)"
+              placeholderTextColor={colors.mutedForeground}
+            />
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: colors.border }]}
+                onPress={() => setShowLoanForm(false)}
+              >
+                <Text style={[styles.modalBtnText, { color: colors.foreground }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: colors.primary }]}
+                onPress={saveLoan}
+              >
+                <Text style={[styles.modalBtnText, { color: "#fff" }]}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -381,7 +581,22 @@ const styles = StyleSheet.create({
     maxWidth: 260,
   },
   insightText: { fontSize: 13, fontFamily: "Inter_400Regular", flexShrink: 1 },
+  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 4 },
   sectionTitle: { fontSize: 17, fontFamily: "Inter_700Bold", marginTop: 4 },
+  addLoanBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 },
+  addLoanText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  emptyLoans: { borderRadius: 14, padding: 20, alignItems: "center", gap: 6, flexDirection: "row", justifyContent: "center" },
+  loanCard: {
+    flexDirection: "row", alignItems: "center", borderRadius: 14, padding: 14, gap: 12,
+    borderLeftWidth: 3,
+  },
+  loanTypeBadge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6 },
+  loanTypeText: { fontSize: 10, fontFamily: "Inter_700Bold" },
+  loanInfo: { flex: 1, gap: 2 },
+  loanPerson: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  loanNote: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  loanDate: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  loanAmount: { fontSize: 15, fontFamily: "Inter_700Bold" },
   catRow: {
     flexDirection: "row", alignItems: "center", gap: 12,
     borderRadius: 14, padding: 14,
@@ -423,4 +638,20 @@ const styles = StyleSheet.create({
     shadowColor: "#000", shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25, shadowRadius: 8, elevation: 6,
   },
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" },
+  modalBox: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, gap: 14 },
+  modalTitle: { fontSize: 18, fontFamily: "Inter_700Bold", marginBottom: 4 },
+  loanTypeRow: { flexDirection: "row", gap: 10 },
+  typeBtn: {
+    flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: "center",
+    borderWidth: 1, borderColor: "transparent",
+  },
+  typeBtnText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  modalInput: {
+    borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12,
+    fontSize: 15, fontFamily: "Inter_400Regular", borderWidth: 1,
+  },
+  modalButtons: { flexDirection: "row", gap: 10, marginTop: 4 },
+  modalBtn: { flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: "center" },
+  modalBtnText: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
 });

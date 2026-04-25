@@ -20,6 +20,16 @@ export type DbExpense = {
   source_id: string | null;
 };
 
+export type DbLoan = {
+  id: string;
+  person_name: string;
+  amount: number;
+  type: string;
+  date: string;
+  note: string;
+  settled: number;
+};
+
 export type DbBudget = {
   id: number;
   total_amount: number;
@@ -57,7 +67,7 @@ export type DbSetting = {
 };
 
 const DEFAULT_BUDGET_JSON = JSON.stringify({
-  Food: 400, Transport: 150, Subscriptions: 100, Shopping: 300, Education: 250, Miscellaneous: 300,
+  Food: 4000, Transport: 1500, Subscriptions: 1000, Shopping: 3000, Education: 2500, Miscellaneous: 3000,
 });
 
 let _db: import("expo-sqlite").SQLiteDatabase | null = null;
@@ -91,14 +101,14 @@ export function initDatabase(): void {
       try {
         db.execSync(stmt);
       } catch (_) {
-        // column already exists — ignore
+        // column/table already exists — ignore
       }
     }
 
     const existing = db.getFirstSync<{ id: number }>("SELECT id FROM budgets WHERE id = 1");
     if (!existing) {
       db.runSync(
-        "INSERT INTO budgets (id, total_amount, category_limits) VALUES (1, 1500, ?)",
+        "INSERT INTO budgets (id, total_amount, category_limits) VALUES (1, 15000, ?)",
         [DEFAULT_BUDGET_JSON]
       );
     }

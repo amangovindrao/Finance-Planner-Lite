@@ -1,0 +1,111 @@
+Build a modern, minimal, and intelligent personal finance mobile app for college students in India, using Indian Rupee (₹) as the default currency.
+
+Core Structure:
+The app should include Home Dashboard, Analytics, Tasks, and AI Assistant sections.
+
+1. User Profile Setup:
+
+* Ask for name and monthly budget
+* Allow adding multiple financial sources:
+
+  * Bank accounts
+  * Wallets (UPI apps)
+  * Cash
+* Each source has a balance
+
+2. Expense Management:
+
+* Add expense via floating button with bottom sheet UI
+* Fields:
+
+  * Amount (₹ format)
+  * Category (icons)
+  * Payment source (bank/wallet/cash)
+  * Optional note
+* Mark expense type:
+
+  * Manual
+  * Auto-detected
+  * Recurring
+* Deduct amount from selected source
+
+3. Auto Expense Detection:
+
+* Request notification access permission
+* Read SMS/app notifications for transactions
+* Extract amount, merchant, and source
+* Auto-add expense with “Auto-detected” tag
+* Allow user to edit or confirm entries
+* Provide privacy toggle to disable feature
+
+4. Given / Taken Money System:
+
+* Add options:
+
+  * Lent (money given to others)
+  * Borrowed (money taken)
+* Show clear UI distinction:
+
+  * Green for lent (money to receive)
+  * Red for borrowed (money to pay)
+* Display summary on dashboard
+
+5. Home Dashboard:
+
+* Personalized greeting (e.g., “Good Evening, [Name]”)
+* Show total balance across all accounts
+* Show remaining monthly budget
+* Show today’s spending
+* Animated progress bar
+* Quick add button
+
+6. Notifications:
+
+* Daily reminder at 11 PM:
+
+  * “Aaj ke expenses add kar liye?”
+* Weekly summary notifications
+* Smart alerts for overspending
+
+7. Analytics:
+
+* Category-wise spending (pie chart)
+* Weekly trends (bar chart)
+* Bank/source-wise breakdown
+* Spending insights and suggestions
+
+8. Tasks System:
+
+* Add any type of tasks (financial, study, personal)
+* Deadline and priority system
+* Mark complete with animations
+
+9. AI Assistant:
+
+* Simple chat interface
+* Respond in Hinglish
+* Answer finance-related queries
+* Give spending advice in friendly tone
+
+10. UI/UX Design:
+
+* Minimal, modern, and clean
+* Dark mode default, optional light mode
+* Smooth animations and micro-interactions
+* Glassmorphism or soft UI cards
+* Bottom navigation bar
+
+11. Performance:
+
+* Offline-first app
+* Use local database (SQLite or Hive)
+* Fast, responsive, and smooth experience
+
+12. Extra Features:
+
+* Search and filter expenses
+* Export data (CSV/PDF)
+* PIN/biometric lock
+* Privacy mode (hide balances)
+
+The app should feel like a smart financial companion, helping users track, understand, and improve their spending habits with a clean UI and intelligent features.

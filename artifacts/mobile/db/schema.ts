@@ -18,9 +18,19 @@ export const CREATE_TABLES_SQL = `
     source_id TEXT
   );
 
+  CREATE TABLE IF NOT EXISTS loans (
+    id TEXT PRIMARY KEY NOT NULL,
+    person_name TEXT NOT NULL,
+    amount REAL NOT NULL,
+    type TEXT NOT NULL DEFAULT 'lent',
+    date TEXT NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    settled INTEGER NOT NULL DEFAULT 0
+  );
+
   CREATE TABLE IF NOT EXISTS budgets (
     id INTEGER PRIMARY KEY DEFAULT 1,
-    total_amount REAL NOT NULL DEFAULT 1500,
+    total_amount REAL NOT NULL DEFAULT 15000,
     category_limits TEXT NOT NULL DEFAULT '{}'
   );
 
@@ -57,4 +67,13 @@ export const CREATE_TABLES_SQL = `
 
 export const MIGRATE_SQL_STATEMENTS = [
   "ALTER TABLE expenses ADD COLUMN source_id TEXT",
+  `CREATE TABLE IF NOT EXISTS loans (
+    id TEXT PRIMARY KEY NOT NULL,
+    person_name TEXT NOT NULL,
+    amount REAL NOT NULL,
+    type TEXT NOT NULL DEFAULT 'lent',
+    date TEXT NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    settled INTEGER NOT NULL DEFAULT 0
+  )`,
 ];

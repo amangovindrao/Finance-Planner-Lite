@@ -49,7 +49,7 @@ export default function SetupScreen() {
 
   const [step, setStep] = useState<"profile" | "accounts">("profile");
   const [name, setName] = useState("");
-  const [budgetAmount, setBudgetAmount] = useState("1500");
+  const [budgetAmount, setBudgetAmount] = useState("15000");
   const [accounts, setAccounts] = useState<DraftAccount[]>([
     { name: "Cash", type: "cash", balance: "0", color: ACCOUNT_COLORS[1] },
   ]);
@@ -85,7 +85,7 @@ export default function SetupScreen() {
 
   function handleFinish() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    const budget = parseFloat(budgetAmount) || 1500;
+    const budget = parseFloat(budgetAmount) || 15000;
     const finalAccounts = accounts
       .filter((a) => a.name.trim())
       .map((a) => ({
@@ -207,7 +207,7 @@ export default function SetupScreen() {
               style={s.input}
               value={budgetAmount}
               onChangeText={setBudgetAmount}
-              placeholder="1500"
+              placeholder="15000"
               placeholderTextColor={colors.mutedForeground}
               keyboardType="numeric"
               returnKeyType="done"

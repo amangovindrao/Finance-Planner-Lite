@@ -3,7 +3,7 @@ import { isLiquidGlassAvailable } from "expo-glass-effect";
 import { Tabs } from "expo-router";
 import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
 import { SymbolView } from "expo-symbols";
-import { Feather, Ionicons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { Platform, StyleSheet, View, useColorScheme } from "react-native";
 import { useColors } from "@/hooks/useColors";
@@ -22,6 +22,10 @@ function NativeTabLayout() {
       <NativeTabs.Trigger name="tasks">
         <Icon sf={{ default: "checkmark.circle", selected: "checkmark.circle.fill" }} />
         <Label>Tasks</Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="assistant">
+        <Icon sf={{ default: "sparkles", selected: "sparkles" }} />
+        <Label>AI</Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );
@@ -98,6 +102,18 @@ function ClassicTabLayout() {
               <SymbolView name="checkmark.circle.fill" tintColor={color} size={22} />
             ) : (
               <Ionicons name="checkmark-circle" size={22} color={color} />
+            ),
+        }}
+      />
+      <Tabs.Screen
+        name="assistant"
+        options={{
+          title: "AI",
+          tabBarIcon: ({ color }) =>
+            isIOS ? (
+              <SymbolView name="sparkles" tintColor={color} size={22} />
+            ) : (
+              <Ionicons name="sparkles" size={22} color={color} />
             ),
         }}
       />

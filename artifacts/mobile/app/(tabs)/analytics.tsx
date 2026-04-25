@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BarChart, PieChart } from "react-native-chart-kit";
 import { Ionicons } from "@expo/vector-icons";
 import { CATEGORIES, CATEGORY_COLORS, Category, useApp } from "@/context/AppContext";
+import { fmt } from "@/utils/currency";
 import { useColors } from "@/hooks/useColors";
 
 type Period = "week" | "month";
@@ -169,7 +170,7 @@ export default function AnalyticsScreen() {
               showValuesOnTopOfBars={false}
               withInnerLines
               fromZero
-              yAxisLabel="$"
+              yAxisLabel="₹"
               yAxisSuffix=""
             />
           </ScrollView>
@@ -189,8 +190,8 @@ export default function AnalyticsScreen() {
                   <View style={[styles.dot, { backgroundColor: CATEGORY_COLORS[cat] }]} />
                   <Text style={[styles.budgetCat, { color: colors.foreground }]}>{cat}</Text>
                   <Text style={[styles.budgetSpent, { color: isOver ? colors.destructive : colors.foreground }]}>
-                    ${spent.toFixed(0)}
-                    {limit > 0 && <Text style={{ color: colors.mutedForeground }}>/{limit}</Text>}
+                    {fmt(spent)}
+                    {limit > 0 && <Text style={{ color: colors.mutedForeground }}>/{fmt(limit)}</Text>}
                   </Text>
                 </View>
                 <View style={[styles.bar, { backgroundColor: colors.muted }]}>
@@ -206,7 +207,7 @@ export default function AnalyticsScreen() {
                 </View>
                 {isOver && (
                   <Text style={[styles.overText, { color: colors.destructive }]}>
-                    Over by ${(spent - limit).toFixed(0)}
+                    Over by {fmt(spent - limit)}
                   </Text>
                 )}
               </View>
@@ -225,7 +226,7 @@ export default function AnalyticsScreen() {
                   <View style={styles.budgetMeta}>
                     <Ionicons name={s.icon as "card-outline"} size={15} color={s.color} />
                     <Text style={[styles.budgetCat, { color: colors.foreground }]}>{s.name}</Text>
-                    <Text style={[styles.budgetSpent, { color: colors.foreground }]}>${s.total.toFixed(0)}</Text>
+                    <Text style={[styles.budgetSpent, { color: colors.foreground }]}>{fmt(s.total)}</Text>
                   </View>
                   <View style={[styles.bar, { backgroundColor: colors.muted }]}>
                     <View style={[styles.barFill, { width: `${pct}%` as DimensionValue, backgroundColor: s.color }]} />

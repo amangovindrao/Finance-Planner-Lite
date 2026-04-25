@@ -29,6 +29,7 @@ export default function SettingsScreen() {
     templates,
     pin,
     notificationPrefs,
+    isPrivacyMode,
     updateBudget,
     addSavingsGoal,
     updateSavingsGoal,
@@ -37,6 +38,7 @@ export default function SettingsScreen() {
     setPin,
     exportCSV,
     updateNotificationPrefs,
+    togglePrivacyMode,
   } = useApp();
 
   const [showBudget, setShowBudget] = useState(false);
@@ -236,7 +238,7 @@ export default function SettingsScreen() {
             </View>
             <View style={s.rowInfo}>
               <Text style={s.rowTitle}>Monthly Budget</Text>
-              <Text style={s.rowSub}>${budget.totalAmount}/month</Text>
+              <Text style={s.rowSub}>₹{budget.totalAmount}/month</Text>
             </View>
             <Ionicons name="chevron-forward" size={16} color={colors.mutedForeground} />
           </TouchableOpacity>
@@ -265,7 +267,7 @@ export default function SettingsScreen() {
                   </View>
                 </View>
                 <Text style={s.goalProgress}>
-                  ${g.currentAmount.toFixed(0)} of ${g.targetAmount.toFixed(0)} ({Math.round(pct)}%)
+                  ₹{g.currentAmount.toFixed(0)} of ₹{g.targetAmount.toFixed(0)} ({Math.round(pct)}%)
                   {g.deadline && ` · Due ${g.deadline}`}
                 </Text>
                 <View style={s.goalBar}>
@@ -303,7 +305,7 @@ export default function SettingsScreen() {
               <View key={t.id} style={s.tmplRow}>
                 <View style={s.tmplInfo}>
                   <Text style={s.tmplName}>{t.name}</Text>
-                  <Text style={s.tmplSub}>${t.amount} · {t.category}</Text>
+                  <Text style={s.tmplSub}>₹{t.amount} · {t.category}</Text>
                 </View>
                 <TouchableOpacity onPress={() => deleteTemplate(t.id)}>
                   <Ionicons name="trash-outline" size={16} color={colors.destructive} />
@@ -349,6 +351,25 @@ export default function SettingsScreen() {
               }}
               trackColor={{ false: colors.muted, true: colors.accent + "88" }}
               thumbColor={notificationPrefs.taskReminders ? colors.accent : colors.mutedForeground}
+            />
+          </View>
+        </View>
+
+        <View style={s.section}>
+          <Text style={s.sectionLabel}>Privacy</Text>
+          <View style={s.row}>
+            <View style={[s.rowIcon, { backgroundColor: colors.primary + "22" }]}>
+              <Ionicons name={isPrivacyMode ? "eye-off-outline" : "eye-outline"} size={18} color={colors.primary} />
+            </View>
+            <View style={s.rowInfo}>
+              <Text style={s.rowTitle}>Privacy Mode</Text>
+              <Text style={s.rowSub}>{isPrivacyMode ? "Balances hidden" : "Balances visible"}</Text>
+            </View>
+            <Switch
+              value={isPrivacyMode}
+              onValueChange={togglePrivacyMode}
+              trackColor={{ false: colors.muted, true: colors.primary + "88" }}
+              thumbColor={isPrivacyMode ? colors.primary : colors.mutedForeground}
             />
           </View>
         </View>
@@ -431,7 +452,7 @@ export default function SettingsScreen() {
           <Text style={s.label}>Goal Name</Text>
           <TextInput style={s.input} value={goalName} onChangeText={setGoalName}
             placeholder="Emergency Fund" placeholderTextColor={colors.mutedForeground} autoFocus />
-          <Text style={s.label}>Target Amount ($)</Text>
+          <Text style={s.label}>Target Amount (₹)</Text>
           <TextInput style={s.input} value={goalTarget} onChangeText={setGoalTarget}
             keyboardType="decimal-pad" placeholder="1000" placeholderTextColor={colors.mutedForeground} />
           <Text style={s.label}>Deadline (YYYY-MM-DD, optional)</Text>

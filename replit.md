@@ -28,23 +28,34 @@ See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and pa
 
 ## Finance Tracker Mobile App (`artifacts/mobile`)
 
-Expo/React Native app for college student personal finance tracking.
+Expo/React Native app for Indian college student personal finance tracking.
 
 ### Features
-- **Home Tab**: Animated SVG budget ring, category spending progress bars, savings goals carousel, recent expenses (tap to reveal edit/delete), smart insights chips, search bar
-- **Analytics Tab**: Category pie chart, weekly bar chart, budget vs actual comparison, smart insights
+- **Home Tab**: Animated SVG budget ring (₹), category spending bars, savings goals, loans (Given/Taken), recent expenses, search, privacy mode eye toggle
+- **Analytics Tab**: Category pie chart, weekly ₹ bar chart, budget vs actual comparison, smart insights
 - **Tasks Tab**: Finance reminders/tasks with deadline countdown colors, preset templates, complete/delete/edit
-- **Settings**: Monthly budget & category limits editor, savings goals with fund-adding, quick-add templates manager, PIN lock (4-digit), CSV export via expo-sharing/expo-file-system
+- **AI Assistant Tab (4th)**: Offline-first smart finance assistant that responds in Hinglish, contextually aware of spending/balance/loans. No network required.
+- **Settings**: Budget editor (₹15000 default), savings goals, PIN lock, Privacy Mode toggle, notification prefs, CSV export
+
+### Indian-Specific Features
+- **₹ Currency**: All amounts shown in Indian Rupees (₹X, ₹XK, ₹XL format)
+- **Given/Taken Money**: Track who owes you (lent) and who you owe (borrowed) with settle/edit/delete
+- **Privacy Mode**: Toggle to hide all balances and amounts with ₹**** mask
+- **Indian Merchant Autocategorize**: Zomato, Swiggy, Ola, Rapido, Paytm, Flipkart, Myntra, etc.
+- **Default Budget**: ₹15000/month with Indian category limits
 
 ### Architecture
-- **State**: `context/AppContext.tsx` — AsyncStorage-backed offline-first state for expenses, budget, tasks, goals, templates, PIN, streak
+- **State**: `context/AppContext.tsx` — SQLite (native) / AsyncStorage (web) offline-first, 1020+ lines. Includes Expense, Account, Loan, Budget, Task, SavingsGoal, Template + privacy/PIN state.
+- **DB**: `db/schema.ts` — loans table, `db/database.ts` — DbLoan type + MIGRATE_SQL_STATEMENTS
+- **Currency Utils**: `utils/currency.ts` — `fmt()`, `fmtFull()`, `fmtHidden()`
 - **Colors**: `constants/colors.ts` — dark (Coinbase-inspired) + light themes
-- **Components**: `BudgetRing` (Reanimated SVG), `Charts` (custom SVG pie/bar), `ExpenseForm`, `TaskForm`, `PinLock`
-- **Navigation**: Expo Router tabs — NativeTabs (liquid glass on iOS 26+), BlurView tab bar (iOS), classic tabs (Android/web)
+- **Navigation**: 4-tab Expo Router — NativeTabs (liquid glass iOS 26+), BlurView (iOS), classic (Android/web)
 
 ### Key packages
 - `expo-file-system@~19.0.21` + `expo-sharing@~14.0.8` — CSV export
+- `expo-sqlite` — SQLite sync native storage
 - `react-native-svg@15.12.1` — charts
-- `@react-native-async-storage/async-storage` — offline storage
-- `expo-haptics` — tactile feedback throughout
+- `@react-native-async-storage/async-storage` — offline storage fallback (web)
+- `expo-haptics` — tactile feedback
 - `react-native-reanimated@~4.1.1` — budget ring animation
+- `expo-notifications@~0.32.16` — budget threshold alerts, task reminders

@@ -8,6 +8,7 @@ import Svg, { Circle } from "react-native-svg";
 import React, { useEffect } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 import { useColors } from "@/hooks/useColors";
+import { fmt } from "@/utils/currency";
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
@@ -85,7 +86,7 @@ export function BudgetRing({ percentage, spent, remaining }: BudgetRingProps) {
         <View style={styles.infoRow}>
           <Text style={[styles.infoLabel, { color: colors.mutedForeground }]}>Spent</Text>
           <Text style={[styles.infoValue, { color: colors.foreground }]}>
-            ${spent.toFixed(2)}
+            {fmt(spent)}
           </Text>
         </View>
         <View style={[styles.divider, { backgroundColor: colors.border }]} />
@@ -97,7 +98,7 @@ export function BudgetRing({ percentage, spent, remaining }: BudgetRingProps) {
               { color: isOver ? colors.destructive : colors.primary },
             ]}
           >
-            ${Math.abs(remaining).toFixed(2)}
+            {fmt(Math.abs(remaining))}
           </Text>
         </View>
       </View>

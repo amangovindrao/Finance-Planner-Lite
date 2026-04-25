@@ -20,6 +20,7 @@ import {
   DbAccount,
   DbBudget,
   DbExpense,
+  DbLoan,
   DbSavingsGoal,
   DbTask,
   DbTemplate,
@@ -115,6 +116,18 @@ export interface Template {
   category: Category;
 }
 
+export type LoanType = "lent" | "borrowed";
+
+export interface Loan {
+  id: string;
+  personName: string;
+  amount: number;
+  type: LoanType;
+  date: string;
+  note: string;
+  settled: boolean;
+}
+
 export interface NotificationPrefs {
   budgetAlerts: boolean;
   taskReminders: boolean;
@@ -126,14 +139,14 @@ const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
 };
 
 const DEFAULT_BUDGET: Budget = {
-  totalAmount: 1500,
+  totalAmount: 15000,
   categoryLimits: {
-    Food: 400,
-    Transport: 150,
-    Subscriptions: 100,
-    Shopping: 300,
-    Education: 250,
-    Miscellaneous: 300,
+    Food: 4000,
+    Transport: 1500,
+    Subscriptions: 1000,
+    Shopping: 3000,
+    Education: 2500,
+    Miscellaneous: 3000,
   },
 };
 
@@ -150,6 +163,8 @@ const AS_KEYS = {
   userName: "@ft_user_name",
   isOnboarded: "@ft_is_onboarded",
   notifPrefs: "@ft_notif_prefs",
+  loans: "@ft_loans",
+  privacyMode: "@ft_privacy_mode",
 };
 
 function generateId(): string {
@@ -158,17 +173,29 @@ function generateId(): string {
 
 export function autoCategorize(description: string): Category {
   const t = description.toLowerCase();
-  if (/food|restaurant|pizza|burger|coffee|cafe|dinner|lunch|breakfast|grocery|eat|dining|sushi|tacos/.test(t))
+  if (/zomato|swiggy|food|restaurant|pizza|burger|coffee|cafe|dinner|lunch|breakfast|grocery|eat|dining|sushi|biryani|dosa|chai|dhaba|mess/.test(t))
     return "Food";
-  if (/uber|lyft|bus|taxi|gas|subway|metro|train|parking|transit|ride|fuel/.test(t))
+  if (/ola|uber|rapido|bus|taxi|auto|metro|train|parking|transit|ride|fuel|petrol|diesel|rickshaw|bike|cab/.test(t))
     return "Transport";
-  if (/netflix|spotify|amazon prime|apple|hulu|disney|subscription|monthly|premium|plan/.test(t))
+  if (/netflix|spotify|amazon prime|hotstar|jio|airtel|vodafone|vi|bsnl|recharge|subscription|monthly|premium|plan|youtube/.test(t))
     return "Subscriptions";
-  if (/shopping|clothes|fashion|store|mall|buy|purchase|order|amazon/.test(t))
+  if (/myntra|flipkart|meesho|nykaa|ajio|shopping|clothes|fashion|store|mall|buy|purchase|order|amazon|snapdeal/.test(t))
     return "Shopping";
-  if (/textbook|course|tuition|school|university|books|study|class|education|learning|exam/.test(t))
+  if (/textbook|course|tuition|school|university|books|study|class|education|learning|exam|udemy|coursera|byju|coaching/.test(t))
     return "Education";
   return "Miscellaneous";
+}
+
+function rowToLoan(row: DbLoan): Loan {
+  return {
+    id: row.id,
+    personName: row.person_name,
+    amount: row.amount,
+    type: row.type as LoanType,
+    date: row.date,
+    note: row.note,
+    settled: row.settled === 1,
+  };
 }
 
 function rowToExpense(row: DbExpense): Expense {
@@ -239,6 +266,7 @@ interface AppContextType {
   savingsGoals: SavingsGoal[];
   templates: Template[];
   accounts: Account[];
+  loans: Loan[];
   pin: string | null;
   isLocked: boolean;
   streak: number;
@@ -247,6 +275,7 @@ interface AppContextType {
   userName: string;
   isOnboarded: boolean;
   notificationPrefs: NotificationPrefs;
+  isPrivacyMode: boolean;
   addExpense: (e: Omit<Expense, "id">) => void;
   updateExpense: (id: string, u: Partial<Expense>) => void;
   deleteExpense: (id: string) => void;
@@ -262,6 +291,9 @@ interface AppContextType {
   addAccount: (a: Omit<Account, "id">) => void;
   updateAccount: (id: string, u: Partial<Account>) => void;
   deleteAccount: (id: string) => void;
+  addLoan: (l: Omit<Loan, "id">) => void;
+  updateLoan: (id: string, u: Partial<Loan>) => void;
+  deleteLoan: (id: string) => void;
   setPin: (p: string | null) => void;
   unlockWithPin: (p: string) => boolean;
   exportCSV: () => Promise<void>;
@@ -273,6 +305,7 @@ interface AppContextType {
   getInsights: () => string[];
   completeOnboarding: (name: string, budget: number, initialAccounts: Omit<Account, "id">[]) => void;
   updateNotificationPrefs: (prefs: Partial<NotificationPrefs>) => void;
+  togglePrivacyMode: () => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -284,6 +317,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [loans, setLoans] = useState<Loan[]>([]);
   const [pin, setPin_] = useState<string | null>(null);
   const [isLocked, setIsLocked] = useState(false);
   const [streak, setStreak] = useState(0);
@@ -291,6 +325,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [isOnboarded, setIsOnboarded] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const [notificationPrefs, setNotificationPrefs] = useState<NotificationPrefs>(DEFAULT_NOTIFICATION_PREFS);
+  const [isPrivacyMode, setIsPrivacyMode] = useState(false);
   const currentMonth = new Date().toISOString().slice(0, 7);
   const initialized = useRef(false);
   const notifPrefsRef = useRef<NotificationPrefs>(DEFAULT_NOTIFICATION_PREFS);
@@ -335,6 +370,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const loadedNotifPrefs: NotificationPrefs = map[AS_KEYS.notifPrefs]
         ? { ...DEFAULT_NOTIFICATION_PREFS, ...JSON.parse(map[AS_KEYS.notifPrefs]!) }
         : DEFAULT_NOTIFICATION_PREFS;
+      const loadedLoans: Loan[] = map[AS_KEYS.loans] ? JSON.parse(map[AS_KEYS.loans]!) : [];
+      const loadedPrivacyMode: boolean = map[AS_KEYS.privacyMode] === "true";
 
       let updatedExpenses = [...loadedExpenses];
       if (lastMonth !== currentMonth) {
@@ -359,6 +396,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setSavingsGoals(loadedGoals);
       setTemplates(loadedTemplates);
       setAccounts(loadedAccounts);
+      setLoans(loadedLoans);
       setPin_(loadedPin);
       setIsLocked(!!loadedPin);
       setStreak(loadedStreak);
@@ -366,6 +404,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setIsOnboarded(loadedIsOnboarded);
       setNotificationPrefs(loadedNotifPrefs);
       notifPrefsRef.current = loadedNotifPrefs;
+      setIsPrivacyMode(loadedPrivacyMode);
     } catch (err) {
       console.warn("AS load error:", err);
     } finally {
@@ -407,6 +446,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const loadedNotifPrefs: NotificationPrefs = notifRow?.value
         ? { ...DEFAULT_NOTIFICATION_PREFS, ...JSON.parse(notifRow.value) }
         : DEFAULT_NOTIFICATION_PREFS;
+      const loanRows = db.getAllSync<DbLoan>("SELECT * FROM loans ORDER BY date DESC");
+      const loadedLoans = loanRows.map(rowToLoan);
+      const privacyRow = db.getFirstSync<{ value: string }>("SELECT value FROM settings WHERE key = 'privacy_mode'");
+      const loadedPrivacyMode = privacyRow?.value === "true";
 
       let updatedExpenses = [...loadedExpenses];
       if (lastMonth !== currentMonth) {
@@ -433,6 +476,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setSavingsGoals(loadedGoals);
       setTemplates(loadedTemplates);
       setAccounts(loadedAccounts);
+      setLoans(loadedLoans);
       setPin_(loadedPin);
       setIsLocked(!!loadedPin);
       setStreak(loadedStreak);
@@ -440,6 +484,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setIsOnboarded(loadedIsOnboarded);
       setNotificationPrefs(loadedNotifPrefs);
       notifPrefsRef.current = loadedNotifPrefs;
+      setIsPrivacyMode(loadedPrivacyMode);
     } catch (err) {
       console.warn("SQLite load error:", err);
       loadFromAsyncStorage();
@@ -494,15 +539,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     CATEGORIES.forEach((cat) => {
       const spent = getCategoryTotal(cat);
       const limit = budget.categoryLimits[cat];
-      if (limit > 0 && spent > limit) insights.push(`${cat} exceeded by $${(spent - limit).toFixed(0)}.`);
+      if (limit > 0 && spent > limit) insights.push(`${cat} exceeded by ₹${(spent - limit).toFixed(0)}.`);
     });
 
     if (streak >= 3) insights.push(`${streak}-day spending streak — keep it up!`);
-    if (remaining > 0 && pct <= 80) insights.push(`$${remaining.toFixed(0)} remaining this month.`);
+    if (remaining > 0 && pct <= 80) insights.push(`₹${remaining.toFixed(0)} remaining this month.`);
 
     if (accounts.length > 0) {
-      const lowAccount = accounts.find((a) => a.balance < 50 && a.balance >= 0);
-      if (lowAccount) insights.push(`${lowAccount.name} balance is running low ($${lowAccount.balance.toFixed(0)}).`);
+      const lowAccount = accounts.find((a) => a.balance < 500 && a.balance >= 0);
+      if (lowAccount) insights.push(`${lowAccount.name} balance is running low (₹${lowAccount.balance.toFixed(0)}).`);
     }
 
     return insights.slice(0, 3);
@@ -544,13 +589,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             notifiedThresholds.current.add(`${e.category}-100`);
             sendImmediateNotification(
               `${e.category} budget exceeded!`,
-              `You've spent all of your $${catLimit} ${e.category} budget this month.`
+              `You've spent all of your ₹${catLimit} ${e.category} budget this month.`
             );
           } else if (catPct >= 80 && !notifiedThresholds.current.has(`${e.category}-80`)) {
             notifiedThresholds.current.add(`${e.category}-80`);
             sendImmediateNotification(
               `${e.category} budget at 80%`,
-              `You've used 80% of your $${catLimit} ${e.category} budget.`
+              `You've used 80% of your ₹${catLimit} ${e.category} budget.`
             );
           }
         }
@@ -561,13 +606,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           notifiedThresholds.current.add("total-100");
           sendImmediateNotification(
             "Monthly budget exceeded!",
-            `You've spent all of your $${bud.totalAmount} monthly budget.`
+            `You've spent all of your ₹${bud.totalAmount} monthly budget.`
           );
         } else if (totalPct >= 80 && !notifiedThresholds.current.has("total-80")) {
           notifiedThresholds.current.add("total-80");
           sendImmediateNotification(
             "Monthly budget at 80%",
-            `You've used 80% of your $${bud.totalAmount} monthly budget.`
+            `You've used 80% of your ₹${bud.totalAmount} monthly budget.`
           );
         }
       }
@@ -896,20 +941,72 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const addLoan = useCallback((l: Omit<Loan, "id">) => {
+    const id = generateId();
+    const newLoan: Loan = { ...l, id };
+    dbRun(
+      "INSERT INTO loans (id, person_name, amount, type, date, note, settled) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [id, l.personName, l.amount, l.type, l.date, l.note, l.settled ? 1 : 0]
+    );
+    setLoans((prev) => {
+      const next = [newLoan, ...prev];
+      if (Platform.OS === "web") AsyncStorage.setItem(AS_KEYS.loans, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const updateLoan = useCallback((id: string, u: Partial<Loan>) => {
+    setLoans((prev) => {
+      const updated = prev.map((l) => (l.id === id ? { ...l, ...u } : l));
+      const loan = updated.find((l) => l.id === id);
+      if (loan) {
+        dbRun(
+          "UPDATE loans SET person_name=?, amount=?, type=?, date=?, note=?, settled=? WHERE id=?",
+          [loan.personName, loan.amount, loan.type, loan.date, loan.note, loan.settled ? 1 : 0, id]
+        );
+        if (Platform.OS === "web") AsyncStorage.setItem(AS_KEYS.loans, JSON.stringify(updated));
+      }
+      return updated;
+    });
+  }, []);
+
+  const deleteLoan = useCallback((id: string) => {
+    dbRun("DELETE FROM loans WHERE id=?", [id]);
+    setLoans((prev) => {
+      const next = prev.filter((l) => l.id !== id);
+      if (Platform.OS === "web") AsyncStorage.setItem(AS_KEYS.loans, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const togglePrivacyMode = useCallback(() => {
+    setIsPrivacyMode((prev) => {
+      const next = !prev;
+      if (Platform.OS !== "web") {
+        dbRun("INSERT OR REPLACE INTO settings (key, value) VALUES ('privacy_mode', ?)", [next ? "true" : "false"]);
+      } else {
+        AsyncStorage.setItem(AS_KEYS.privacyMode, next ? "true" : "false");
+      }
+      return next;
+    });
+  }, []);
+
   const value: AppContextType = {
-    expenses, budget, tasks, savingsGoals, templates, accounts,
+    expenses, budget, tasks, savingsGoals, templates, accounts, loans,
     pin, isLocked, streak, currentMonth, isLoaded, userName, isOnboarded,
-    notificationPrefs,
+    notificationPrefs, isPrivacyMode,
     addExpense, updateExpense, deleteExpense, updateBudget,
     addTask, updateTask, deleteTask,
     addSavingsGoal, updateSavingsGoal, deleteSavingsGoal,
     addTemplate, deleteTemplate,
     addAccount, updateAccount, deleteAccount,
+    addLoan, updateLoan, deleteLoan,
     setPin, unlockWithPin,
     exportCSV,
     getMonthExpenses, getCategoryTotal, getTotalSpent, getTodaySpent, getTotalBalance, getInsights,
     completeOnboarding,
     updateNotificationPrefs,
+    togglePrivacyMode,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

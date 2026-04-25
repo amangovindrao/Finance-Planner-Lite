@@ -123,7 +123,7 @@ export function ExpenseForm({ visible, onClose, editExpense }: Props) {
         )}
 
         <View style={s.amountRow}>
-          <Text style={s.currencySign}>$</Text>
+          <Text style={s.currencySign}>₹</Text>
           <TextInput
             style={s.amountInput}
             value={amount}
@@ -190,7 +190,7 @@ export function ExpenseForm({ visible, onClose, editExpense }: Props) {
                     {a.name}
                   </Text>
                   {sourceId === a.id && (
-                    <Text style={[s.sourceBalance, { color: a.color }]}>${a.balance.toFixed(0)}</Text>
+                    <Text style={[s.sourceBalance, { color: a.color }]}>₹{a.balance.toFixed(0)}</Text>
                   )}
                 </TouchableOpacity>
               ))}
